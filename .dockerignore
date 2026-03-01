@@ -1,0 +1,14 @@
+node_modules
+dist
+.next
+build
+coverage
+.git
+.env
+.env.*
+*.log
+npm-debug.log*
+apps
+packages
+infra
+scripts

@@ -1,0 +1,16 @@
+{
+  "name": "rharuowallet",
+  "private": true,
+  "version": "0.1.0",
+  "workspaces": [
+    "apps/*",
+    "services/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "bootstrap": "pnpm -w install || npm install",
+    "dev": "npm run dev --workspace=services/api",
+    "dev:web": "npm run dev --workspace=apps/web",
+    "lint": "echo \"Configure lint scripts in each package\""
+  }
+}

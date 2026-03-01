@@ -1,0 +1,96 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ---- Roles ----
+model Role {
+  id        String   @id @default(cuid())
+  name      String   @unique
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+  users     User[]
+
+  @@map("roles")
+}
+
+// ---- Usuários ----
+model User {
+  id           String    @id @default(cuid())
+  email        String    @unique
+  name         String?
+  passwordHash String    @map("password_hash")
+  roleId       String    @map("role_id")
+  role         Role      @relation(fields: [roleId], references: [id])
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @updatedAt @map("updated_at")
+  accounts     Account[]
+
+  @@map("users")
+}
+
+// ---- Conta do usuário na corretora ----
+model Account {
+  id               String       @id @default(cuid())
+  userId           String       @map("user_id")
+  brokerIdentifier String       @map("broker_identifier")
+  createdAt        DateTime     @default(now()) @map("created_at")
+  user             User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  holdings         Holding[]
+  b3Snapshots      B3Snapshot[]
+
+  @@map("accounts")
+}
+
+// ---- Ativo (ação, FII, ETF, BDR, etc.) ----
+model Asset {
+  id       String    @id @default(cuid())
+  symbol   String    @unique
+  name     String
+  type     String    // STOCK | FII | ETF | BDR | FIXED_INCOME
+  holdings Holding[]
+
+  @@map("assets")
+}
+
+// ---- Posição do usuário em um ativo ----
+model Holding {
+  id           String        @id @default(cuid())
+  accountId    String        @map("account_id")
+  assetId      String        @map("asset_id")
+  quantity     Decimal
+  avgPrice     Decimal       @map("avg_price")
+  account      Account       @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  asset        Asset         @relation(fields: [assetId], references: [id])
+  transactions Transaction[]
+
+  @@map("holdings")
+}
+
+// ---- Histórico de transações ----
+model Transaction {
+  id        String   @id @default(cuid())
+  holdingId String   @map("holding_id")
+  type      String   // BUY | SELL
+  quantity  Decimal
+  price     Decimal
+  date      DateTime
+  holding   Holding  @relation(fields: [holdingId], references: [id], onDelete: Cascade)
+
+  @@map("transactions")
+}
+
+// ---- Snapshot bruto vindo da B3 ----
+model B3Snapshot {
+  id         String   @id @default(cuid())
+  accountId  String   @map("account_id")
+  rawPayload Json     @map("raw_payload")
+  parsedAt   DateTime @map("parsed_at")
+  account    Account  @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  @@map("b3_snapshots")
+}
