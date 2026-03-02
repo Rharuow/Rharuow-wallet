@@ -4,6 +4,45 @@ import Image from "next/image";
 import { Card } from "rharuow-ds";
 import { formatBRL, formatCompact } from "@/lib/format";
 
+export function FiiCardSkeleton() {
+  return (
+    <Card variant="elevated" padding="none" rounded="lg">
+      <Card.Body className="p-4 flex flex-col gap-3 animate-pulse">
+        {/* Header */}
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2">
+            <div className="h-8 w-8 rounded-full bg-slate-200 shrink-0" />
+            <div className="h-4 w-16 rounded bg-slate-200" />
+          </div>
+          <div className="h-5 w-20 rounded bg-slate-200" />
+        </div>
+
+        {/* Nome */}
+        <div className="h-3 w-3/4 rounded bg-slate-200" />
+
+        {/* Setor */}
+        <div className="h-4 w-1/3 rounded-full bg-slate-200" />
+
+        {/* Métricas */}
+        <div className="flex items-center gap-4 mt-1">
+          <div className="flex flex-col gap-1">
+            <div className="h-2 w-12 rounded bg-slate-200" />
+            <div className="h-3 w-10 rounded bg-slate-200" />
+          </div>
+          <div className="flex flex-col gap-1">
+            <div className="h-2 w-8 rounded bg-slate-200" />
+            <div className="h-3 w-8 rounded bg-slate-200" />
+          </div>
+          <div className="flex flex-col gap-1 ml-auto">
+            <div className="h-2 w-10 rounded bg-slate-200" />
+            <div className="h-3 w-12 rounded bg-slate-200" />
+          </div>
+        </div>
+      </Card.Body>
+    </Card>
+  );
+}
+
 export type FiiItem = {
   stock: string;
   name: string;

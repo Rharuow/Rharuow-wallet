@@ -13,7 +13,7 @@
     "react": "19.2.3",
     "react-dom": "19.2.3",
     "react-hook-form": "^7.71.2",
-    "rharuow-ds": "^1.10.5"
+    "rharuow-ds": "^1.10.7"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",

@@ -30,8 +30,8 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
   return (
     <div className="min-h-screen bg-[var(--background)]">
       {/* Top bar */}
-      <header className="flex items-center gap-4 border-b border-slate-200 bg-white px-4 py-3 shadow-sm">
-        <Button variant="outline" onClick={() => setOpen(true)}>
+      <header className="flex items-center gap-4 border-b border-slate-200 bg-[var(--background)] px-4 py-3 shadow-sm">
+        <Button onClick={() => setOpen(true)}>
           ☰
         </Button>
         <Image
@@ -41,9 +41,9 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
           height={50}
           className="object-contain"
           style={{
-                width: 140,
-                height: 50
-            }}
+            width: 140,
+            height: 50
+          }}
         />
         <div className="ml-auto">
           <Button variant="outline" onClick={handleLogout}>

@@ -3,6 +3,8 @@ import { getAuthToken } from "@/lib/auth";
 import { FiiCard, FiiItem } from "./FiiCard";
 import { Pagination } from "./Pagination";
 import { FiisFilters, SortField, SortOrder } from "./FiisFilters";
+import { FiisLoadingProvider } from "./FiisContext";
+import { FiisGridWrapper } from "./FiisGridWrapper";
 
 export const metadata = {
   title: "FIIs — RharouWallet",
@@ -90,6 +92,7 @@ export default async function FiisPage({ searchParams }: PageProps) {
   }
 
   return (
+    <FiisLoadingProvider>
     <div>
       <h1 className="text-2xl font-bold text-[var(--foreground)] mb-4">FIIs</h1>
 
@@ -108,7 +111,7 @@ export default async function FiisPage({ searchParams }: PageProps) {
       )}
 
       {data && data.stocks.length > 0 && (
-        <>
+        <FiisGridWrapper>
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {data.stocks.map((fii) => (
               <FiiCard key={fii.stock} fii={fii} />
@@ -119,12 +122,12 @@ export default async function FiisPage({ searchParams }: PageProps) {
             <Pagination
               currentPage={data.currentPage ?? page}
               totalPages={data.totalPages ?? 1}
-              hasNextPage={data.hasNextPage ?? false}
             />
           </Suspense>
-        </>
+        </FiisGridWrapper>
       )}
     </div>
+    </FiisLoadingProvider>
   );
 }
 

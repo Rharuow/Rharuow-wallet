@@ -9,8 +9,12 @@
   ],
   "scripts": {
     "bootstrap": "pnpm -w install || npm install",
-    "dev": "npm run dev --workspace=services/api",
+    "dev": "concurrently --kill-others-on-fail \"npm run dev:api\" \"npm run dev:web\"",
+    "dev:api": "npm run dev --workspace=services/api",
     "dev:web": "npm run dev --workspace=apps/web",
     "lint": "echo \"Configure lint scripts in each package\""
+  },
+  "devDependencies": {
+    "concurrently": "^9.2.1"
   }
 }

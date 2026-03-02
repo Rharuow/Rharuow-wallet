@@ -3,11 +3,12 @@
 
 :root {
   --background: #f8fafc;
-  --foreground: #0f172a;
+  --foreground: #f8fafc;
 
   /* Tema RharouWallet — verde-esmeralda (finanças) */
   --primary: #5B3DF5;
   --secondary: #1ED760;
+
 }
 
 @theme inline {
@@ -27,10 +28,14 @@
 /* Automatic dark mode based on system preference */
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
-  /* Brand Colors - Dark Theme (Auto) */
-  --primary: #5B3DF5;
-  --secondary: #1ED760;
-}}
+    --background: #000;
+
+    /* Brand Colors - Dark Theme (Auto) */
+    --primary: #5B3DF5;
+    --secondary: #1ED760;
+
+    --foreground: #f8fafc;
+  }}
 
 body {
   background: var(--background);
