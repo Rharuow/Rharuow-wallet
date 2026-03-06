@@ -14,6 +14,7 @@ export default function LoginPage() {
           <Image
             src="/logo.png"
             alt="RharouWallet"
+            loading="eager"
             width={280}
             height={100}
             priority

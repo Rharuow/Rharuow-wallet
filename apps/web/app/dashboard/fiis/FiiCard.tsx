@@ -1,8 +1,8 @@
 "use client";
 
-import Image from "next/image";
 import { Card } from "rharuow-ds";
 import { formatBRL, formatCompact } from "@/lib/format";
+import { Metric } from "@/components/Metric";
 
 export function FiiCardSkeleton() {
   return (
@@ -44,95 +44,96 @@ export function FiiCardSkeleton() {
 }
 
 export type FiiItem = {
-  stock: string;
-  name: string;
-  close?: number | null;
-  change?: number | null;
-  volume?: number | null;
-  market_cap?: number | null;
-  logo?: string | null;
-  sector?: string | null;
-  priceToBook?: number | null;
+  papel: string;
+  segmento: string;
+  cotacao: number | null;
+  ffoYield: number | null;
+  dividendYield: number | null;
+  pvp: number | null;
+  valorMercado: number | null;
+  liquidez: number | null;
+  qtdImoveis: number | null;
+  precoM2: number | null;
+  aluguelM2: number | null;
+  capRate: number | null;
+  vacanciaMedia: number | null;
 };
 
+
 export function FiiCard({ fii }: { fii: FiiItem }) {
-  const changePositive = (fii.change ?? 0) >= 0;
+  const pvpColor =
+    fii.pvp == null
+      ? "neutral"
+      : fii.pvp < 1
+      ? "positive"
+      : fii.pvp > 1.2
+      ? "negative"
+      : "neutral";
 
   return (
     <Card variant="elevated" padding="none" rounded="lg" className="hover:shadow-md transition-shadow">
       <Card.Body className="p-4 flex flex-col gap-3">
-        {/* Header: logo + ticker + preço */}
+        {/* Header: avatar + ticker + cotação */}
         <div className="flex items-center justify-between gap-2">
           <div className="flex items-center gap-2 min-w-0">
-            {fii.logo ? (
-              <Image
-                src={fii.logo}
-                alt={fii.stock}
-                width={32}
-                height={32}
-                className="rounded-full object-contain shrink-0"
-                unoptimized
-                style={{
-                    width: 32,
-                    height: 32
-                }}
-              />
-            ) : (
-              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[var(--primary-light)] text-[10px] font-bold text-[var(--primary)]">
-                {fii.stock.slice(0, 2)}
-              </div>
-            )}
+            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[var(--primary-light)] text-[10px] font-bold text-[var(--primary)]">
+              {fii.papel.slice(0, 2)}
+            </div>
             <span className="text-base font-bold text-[var(--foreground)] truncate">
-              {fii.stock}
+              {fii.papel}
             </span>
           </div>
           <span className="text-lg font-bold text-[var(--foreground)] shrink-0">
-            {fii.close != null ? formatBRL(fii.close) : "—"}
+            {fii.cotacao != null ? formatBRL(fii.cotacao) : "—"}
           </span>
         </div>
 
-        {/* Nome completo */}
-        <p className="text-xs text-slate-500 leading-snug line-clamp-2">
-          {fii.name}
-        </p>
-
-        {/* Setor */}
-        {fii.sector && (
+        {/* Segmento */}
+        {fii.segmento && (
           <span className="inline-flex w-fit items-center rounded-full bg-[var(--primary-light)] px-2.5 py-0.5 text-[10px] font-medium text-[var(--primary)]">
-            {fii.sector}
+            {fii.segmento}
           </span>
         )}
 
-        {/* Métricas */}
-        <div className="flex items-center gap-4 text-xs mt-1">
-          <div className="flex flex-col">
-            <span className="text-slate-400 uppercase tracking-wide text-[10px]">Variação</span>
-            <span
-              className={`font-semibold ${
-                changePositive ? "text-emerald-600" : "text-red-500"
-              }`}
-            >
-              {fii.change != null
-                ? `${changePositive ? "+" : ""}${fii.change.toFixed(2)}%`
-                : "—"}
-            </span>
-          </div>
-
-          <div className="flex flex-col">
-            <span className="text-slate-400 uppercase tracking-wide text-[10px]">P/VP</span>
-            <span className="font-semibold text-[var(--foreground)]">
-              {fii.priceToBook != null ? fii.priceToBook.toFixed(2) : "—"}
-            </span>
-          </div>
-
-          {fii.volume != null && (
-            <div className="flex flex-col ml-auto">
-              <span className="text-slate-400 uppercase tracking-wide text-[10px]">Volume</span>
-              <span className="font-semibold text-[var(--foreground)]">
-                {formatCompact(fii.volume)}
-              </span>
-            </div>
-          )}
+        {/* Métricas — linha 1 */}
+        <div className="grid grid-cols-3 gap-x-4 gap-y-2 text-xs mt-1">
+          <Metric
+            label="D.Y."
+            value={fii.dividendYield != null ? `${fii.dividendYield.toFixed(2)}%` : "—"}
+            hint="Dividend Yield: rendimento distribuído nos últimos 12 meses em relação à cotação atual"
+            position="right"
+          />
+          <Metric
+            label="P/VP"
+            value={fii.pvp != null ? fii.pvp.toFixed(2) : "—"}
+            highlight={pvpColor}
+            hint="Preço/Valor Patrimonial: valores abaixo de 1 indicam desconto em relação ao patrimônio do fundo"
+            position="top"
+          />
+          <Metric
+            label="FFO Yield"
+            value={fii.ffoYield != null ? `${fii.ffoYield.toFixed(2)}%` : "—"}
+            hint="FFO Yield: geração de caixa operacional (Funds From Operations) em relação à cotação"
+            position="left"
+          />
+          <Metric
+            label="Val. Mercado"
+            value={fii.valorMercado != null ? formatCompact(fii.valorMercado) : "—"}
+            hint="Valor de Mercado: capitalização total do fundo (preço × cotas emitidas)"
+            position="right"
+          />
+          <Metric
+            label="Liquidez"
+            value={fii.liquidez != null ? formatCompact(fii.liquidez) : "—"}
+            hint="Liquidez Diária: volume médio negociado por dia nos últimos 2 meses"
+            position="top"
+          />
+          <Metric
+            label="Vacância"
+            value={fii.vacanciaMedia != null ? `${fii.vacanciaMedia.toFixed(1)}%` : "—"}
+            hint="Vacância Média: percentual de área disponível não locada no portfólio do fundo"
+            position="left"
+          />
         </div>
       </Card.Body>
     </Card>

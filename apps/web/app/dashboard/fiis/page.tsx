@@ -10,59 +10,51 @@ export const metadata = {
   title: "FIIs — RharouWallet",
 };
 
-type StocksResponse = {
-  stocks: FiiItem[];
-  currentPage?: number;
-  totalPages?: number;
-  itemsPerPage?: number;
-  totalCount?: number;
-  hasNextPage?: boolean;
+type FiiListResponse = {
+  fiis: FiiItem[];
+  currentPage: number;
+  totalPages: number;
+  totalCount: number;
+  hasNextPage: boolean;
+  segmentos: string[];
 };
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001";
-const LIMIT = 10;
+const LIMIT = 12;
 
 async function fetchFiis(params: {
   page: number;
   search?: string;
-  sortBy: string;
+  segmento?: string;
+  sortBy: SortField;
   sortOrder: SortOrder;
-}): Promise<StocksResponse> {
+}): Promise<FiiListResponse> {
   const token = await getAuthToken();
 
   const qs = new URLSearchParams({
-    type: "fund",
     limit: String(LIMIT),
     page: String(params.page),
     sortBy: params.sortBy,
     sortOrder: params.sortOrder,
   });
-  if (params.search) qs.set("search", params.search);
+  if (params.search)   qs.set("search",   params.search);
+  if (params.segmento) qs.set("segmento", params.segmento);
 
-  const res = await fetch(`${API_URL}/v1/stocks?${qs.toString()}`, {
+  const res = await fetch(`${API_URL}/v1/fiis?${qs.toString()}`, {
     headers: { Authorization: `Bearer ${token}` },
     cache: "no-store",
   });
 
-  if (!res.ok) {
-    throw new Error(`Falha ao buscar FIIs: ${res.status}`);
-  }
+  if (!res.ok) throw new Error(`Falha ao buscar FIIs: ${res.status}`);
 
   return res.json();
-}
-
-function sortByPvp(stocks: FiiItem[], order: SortOrder): FiiItem[] {
-  return [...stocks].sort((a, b) => {
-    const av = a.priceToBook ?? (order === "asc" ? Infinity : -Infinity);
-    const bv = b.priceToBook ?? (order === "asc" ? Infinity : -Infinity);
-    return order === "asc" ? av - bv : bv - av;
-  });
 }
 
 type PageProps = {
   searchParams: Promise<{
     page?: string;
     search?: string;
+    segmento?: string;
     sortBy?: string;
     sortOrder?: string;
   }>;
@@ -70,34 +62,27 @@ type PageProps = {
 
 export default async function FiisPage({ searchParams }: PageProps) {
   const sp = await searchParams;
-  const page = Math.max(1, parseInt(sp.page ?? "1", 10) || 1);
-  const search = sp.search?.trim() || undefined;
-  const sortField = (sp.sortBy ?? "volume") as SortField | "volume";
-  const sortOrder: SortOrder = sp.sortOrder === "asc" ? "asc" : "desc";
+  const page       = Math.max(1, parseInt(sp.page ?? "1", 10) || 1);
+  const search     = sp.search?.trim()   || undefined;
+  const segmento   = sp.segmento?.trim() || undefined;
+  const sortField  = (sp.sortBy ?? "papel") as SortField;
+  const sortOrder: SortOrder = sp.sortOrder === "desc" ? "desc" : "asc";
 
-  // P/VP is enriched post-fetch on the backend, not a valid brapi sortBy field.
-  // We fetch with default sort (volume desc) and re-sort client-result here.
-  const apiSortBy = sortField === "priceToBook" ? "volume" : sortField;
-
-  let data: StocksResponse | null = null;
+  let data: FiiListResponse | null = null;
   let error: string | null = null;
 
   try {
-    data = await fetchFiis({ page, search, sortBy: apiSortBy, sortOrder });
-    if (sortField === "priceToBook" && data) {
-      data = { ...data, stocks: sortByPvp(data.stocks, sortOrder) };
-    }
+    data = await fetchFiis({ page, search, segmento, sortBy: sortField, sortOrder });
   } catch (err) {
     error = err instanceof Error ? err.message : "Erro desconhecido";
   }
 
   return (
     <FiisLoadingProvider>
-    <div>
       <h1 className="text-2xl font-bold text-[var(--foreground)] mb-4">FIIs</h1>
 
       <Suspense fallback={null}>
-        <FiisFilters />
+        <FiisFilters segmentos={data?.segmentos ?? []} />
       </Suspense>
 
       {error && (
@@ -106,27 +91,28 @@ export default async function FiisPage({ searchParams }: PageProps) {
         </div>
       )}
 
-      {data && data.stocks.length === 0 && (
+      {data && data.fiis.length === 0 && (
         <p className="text-sm text-slate-500">Nenhum FII encontrado.</p>
       )}
 
-      {data && data.stocks.length > 0 && (
-        <FiisGridWrapper>
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {data.stocks.map((fii) => (
-              <FiiCard key={fii.stock} fii={fii} />
-            ))}
-          </div>
+      {data && data.fiis.length > 0 && (
+        <>
+          <FiisGridWrapper>
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              {data.fiis.map((fii) => (
+                <FiiCard key={fii.papel} fii={fii} />
+              ))}
+            </div>
+          </FiisGridWrapper>
 
           <Suspense fallback={null}>
             <Pagination
-              currentPage={data.currentPage ?? page}
-              totalPages={data.totalPages ?? 1}
+              currentPage={data.currentPage}
+              totalPages={data.totalPages}
             />
           </Suspense>
-        </FiisGridWrapper>
+        </>
       )}
-    </div>
     </FiisLoadingProvider>
   );
 }

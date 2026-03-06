@@ -11,7 +11,7 @@ import { authRoutes } from './modules/auth/auth.routes'
 import { usersRoutes } from './modules/users/users.routes'
 import { portfolioRoutes } from './modules/portfolio/portfolio.routes'
 import { rolesRoutes } from './modules/roles/roles.routes'
-import { stocksRoutes } from './modules/stocks/stocks.routes'
+import { fiisRoutes } from './modules/fiis/fiis.routes'
 import { seed } from './lib/seed'
 
 if (!process.env.JWT_SECRET) {
@@ -66,7 +66,7 @@ async function bootstrap() {
         { name: 'Users', description: 'Gerenciamento de usuários' },
         { name: 'Roles', description: 'Gerenciamento de roles' },
         { name: 'Portfolio', description: 'Portfólio do usuário' },
-        { name: 'Stocks', description: 'Cotações e histórico de ativos da B3 (via brapi.dev)' },
+        { name: 'FIIs', description: 'Fundos de Investimento Imobiliário (dados via Fundamentus)' },
       ],
     },
   })
@@ -85,7 +85,7 @@ async function bootstrap() {
   await server.register(usersRoutes, { prefix: '/v1/users' })
   await server.register(portfolioRoutes, { prefix: '/v1/portfolio' })
   await server.register(rolesRoutes, { prefix: '/v1/roles' })
-  await server.register(stocksRoutes, { prefix: '/v1' })
+  await server.register(fiisRoutes, { prefix: '/v1' })
 
   // --- Health check ---
   server.get(
