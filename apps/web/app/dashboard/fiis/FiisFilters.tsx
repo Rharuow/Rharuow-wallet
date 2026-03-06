@@ -2,7 +2,7 @@
 
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useRef } from "react";
-import { Chip, Input } from "rharuow-ds";
+import { Chip, Input, Select } from "rharuow-ds";
 import { useFiisLoading } from "./FiisContext";
 
 function SearchIcon() {
@@ -104,7 +104,7 @@ export function FiisFilters({ segmentos = [] }: Props) {
   function handleSegmento(seg: string) {
     startTransition(() => {
       router.push(
-        `${pathname}?${buildParams({ segmento: seg === currentSegmento ? null : seg })}`
+        `${pathname}?${buildParams({ segmento: seg || null })}`
       );
     });
   }
@@ -144,21 +144,15 @@ export function FiisFilters({ segmentos = [] }: Props) {
 
       {/* Row 2: segmento filter (only when list is available) */}
       {segmentos.length > 0 && (
-        <div className="flex items-center gap-1 flex-wrap">
-          <span className="text-xs text-slate-400 mr-1 whitespace-nowrap">Segmento:</span>
-          <Chip
-            label="Todos"
-            active={!currentSegmento}
-            onChange={() => handleSegmento("")}
+        <div className="w-full sm:max-w-xs">
+          <Select
+            name="segmento"
+            label="Segmento"
+            isClearable
+            value={currentSegmento}
+            onChange={(e) => handleSegmento(e.target.value)}
+            options={segmentos.map((seg) => ({ label: seg, value: seg }))}
           />
-          {segmentos.map((seg) => (
-            <Chip
-              key={seg}
-              label={seg}
-              active={currentSegmento === seg}
-              onChange={() => handleSegmento(seg)}
-            />
-          ))}
         </div>
       )}
     </div>
