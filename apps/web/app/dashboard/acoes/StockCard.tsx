@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { Card } from "rharuow-ds";
 import { formatBRL, formatCompact } from "@/lib/format";
 import { Metric } from "@/components/Metric";
@@ -54,12 +55,13 @@ export function StockCard({ stock }: { stock: StockItem }) {
   const changeLabel = `${stock.change >= 0 ? "+" : ""}${stock.change.toFixed(2)}%`;
 
   return (
-    <Card
-      variant="elevated"
-      padding="none"
-      rounded="lg"
-      className="hover:shadow-md transition-shadow"
-    >
+    <Link href={`/dashboard/acoes/${stock.stock}`} className="block group">
+      <Card
+        variant="elevated"
+        padding="none"
+        rounded="lg"
+        className="hover:shadow-md transition-shadow h-full"
+      >
       <Card.Body className="p-4 flex flex-col gap-3">
         {/* Header: logo + ticker + cotação */}
         <div className="flex items-center justify-between gap-2">
@@ -123,5 +125,6 @@ export function StockCard({ stock }: { stock: StockItem }) {
         </div>
       </Card.Body>
     </Card>
+    </Link>
   );
 }

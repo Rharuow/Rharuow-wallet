@@ -1,6 +1,6 @@
 import { FastifyInstance } from 'fastify'
 import { authenticate } from '../../plugins/authenticate'
-import { listStocks } from './stocks.service'
+import { listStocks, getStockDetail } from './stocks.service'
 import { StockListQuerySchema, STOCK_SORT_FIELDS } from './stocks.schema'
 
 export async function stocksRoutes(fastify: FastifyInstance) {
@@ -94,6 +94,50 @@ export async function stocksRoutes(fastify: FastifyInstance) {
       const query = StockListQuerySchema.parse(request.query)
       const data = await listStocks(query)
       return reply.send(data)
+    },
+  )
+
+  // ----------------------------------------------------------------
+  // GET /v1/stocks/:ticker
+  // Detalhe completo de uma ação
+  // ----------------------------------------------------------------
+  fastify.get<{ Params: { ticker: string } }>(
+    '/stocks/:ticker',
+    {
+      preHandler: authenticate,
+      schema: {
+        tags: ['Stocks'],
+        summary: 'Detalhe de uma ação',
+        description:
+          'Retorna dados completos de uma ação: cotação, perfil, indicadores financeiros e estatísticas. ' +
+          'Fonte: brapi.dev com módulos summaryProfile, financialData e defaultKeyStatistics. ' +
+          'Resultado cacheado no Redis por 60 s.',
+        security: [{ bearerAuth: [] }],
+        params: {
+          type: 'object',
+          properties: {
+            ticker: { type: 'string', description: 'Ticker da ação (ex: PETR4)' },
+          },
+          required: ['ticker'],
+        },
+        response: {
+          200: { type: 'object', additionalProperties: true },
+          404: {
+            type: 'object',
+            properties: { error: { type: 'string' } },
+          },
+        },
+      },
+    },
+    async (request, reply) => {
+      const { ticker } = request.params
+      const detail = await getStockDetail(ticker)
+
+      if (!detail) {
+        return reply.status(404).send({ error: `Ação "${ticker.toUpperCase()}" não encontrada` })
+      }
+
+      return reply.send(detail)
     },
   )
 }

@@ -87,3 +87,43 @@ export async function fetchBrapiStocks(
 
   return json
 }
+
+// ----------------------------------------------------------------
+// Detalhe de uma ação
+// ----------------------------------------------------------------
+
+const BRAPI_QUOTE_URL = 'https://brapi.dev/api/quote'
+const DETAIL_MODULES = 'summaryProfile,financialData,defaultKeyStatistics'
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function fetchQuote(url: string): Promise<any | null> {
+  const res = await fetch(url, {
+    headers: { 'Content-Type': 'application/json' },
+    cache: 'no-store',
+  })
+
+  if (!res.ok) return null
+
+  const json = await res.json() as { results?: unknown[]; error?: unknown }
+
+  if (!json.results || json.results.length === 0) return null
+
+  return json.results[0]
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export async function fetchBrapiStockDetail(ticker: string): Promise<any> {
+  const encoded = encodeURIComponent(ticker.toUpperCase())
+  const token = process.env.BRAPI_TOKEN
+
+  // Tenta com módulos completos (requer token pago no brapi.dev)
+  const modulesUrl = `${BRAPI_QUOTE_URL}/${encoded}?modules=${DETAIL_MODULES}${
+    token ? `&token=${token}` : ''
+  }`
+  const withModules = await fetchQuote(modulesUrl)
+  if (withModules) return withModules
+
+  // Fallback: cotação básica gratuita (sem módulos)
+  const basicUrl = `${BRAPI_QUOTE_URL}/${encoded}${token ? `?token=${token}` : ''}`
+  return fetchQuote(basicUrl)
+}
