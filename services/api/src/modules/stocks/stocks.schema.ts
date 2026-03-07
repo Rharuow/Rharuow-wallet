@@ -49,6 +49,17 @@ export const StockListResponseSchema = z.object({
 export type StockListResponse = z.infer<typeof StockListResponseSchema>
 
 // ----------------------------------------------------------------
+// Segmentos (mapeamento EN → PT)
+// ----------------------------------------------------------------
+
+export const StockSegmentSchema = z.object({
+  nameEn: z.string(),
+  namePt: z.string(),
+})
+
+export type StockSegment = z.infer<typeof StockSegmentSchema>
+
+// ----------------------------------------------------------------
 // Detalhe de uma ação
 // ----------------------------------------------------------------
 

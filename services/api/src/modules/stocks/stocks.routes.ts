@@ -1,6 +1,6 @@
 import { FastifyInstance } from 'fastify'
 import { authenticate } from '../../plugins/authenticate'
-import { listStocks, getStockDetail } from './stocks.service'
+import { listStocks, getStockDetail, listSegments } from './stocks.service'
 import { StockListQuerySchema, STOCK_SORT_FIELDS } from './stocks.schema'
 
 export async function stocksRoutes(fastify: FastifyInstance) {
@@ -94,6 +94,41 @@ export async function stocksRoutes(fastify: FastifyInstance) {
       const query = StockListQuerySchema.parse(request.query)
       const data = await listStocks(query)
       return reply.send(data)
+    },
+  )
+
+  // ----------------------------------------------------------------
+  // GET /v1/stocks/segments
+  // Lista todos os segmentos com tradução PT-BR
+  // ----------------------------------------------------------------
+  fastify.get(
+    '/stocks/segments',
+    {
+      preHandler: authenticate,
+      schema: {
+        tags: ['Stocks'],
+        summary: 'Listar segmentos de ações',
+        description:
+          'Retorna todos os segmentos cadastrados com o nome original em inglês (retornado pela brapi) ' +
+          'e a tradução em português, ordenados alfabeticamente pelo nome em PT-BR.',
+        security: [{ bearerAuth: [] }],
+        response: {
+          200: {
+            type: 'array',
+            items: {
+              type: 'object',
+              properties: {
+                nameEn: { type: 'string', description: 'Nome em inglês (usado para filtrar na brapi)' },
+                namePt: { type: 'string', description: 'Nome em português (exibido no frontend)' },
+              },
+            },
+          },
+        },
+      },
+    },
+    async (_request, reply) => {
+      const segments = await listSegments()
+      return reply.send(segments)
     },
   )
 

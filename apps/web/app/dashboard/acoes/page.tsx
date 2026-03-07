@@ -6,6 +6,8 @@ import { StocksFilters, StockSortField, SortOrder } from "./StocksFilters";
 import { StocksLoadingProvider } from "./StocksContext";
 import { StocksGridWrapper } from "./StocksGridWrapper";
 
+export type StockSegment = { nameEn: string; namePt: string };
+
 export const metadata = {
   title: "Ações — RharouWallet",
 };
@@ -22,6 +24,16 @@ type StocksListResponse = {
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001";
 const LIMIT = 12;
+
+async function fetchSegments(): Promise<StockSegment[]> {
+  const token = await getAuthToken();
+  const res = await fetch(`${API_URL}/v1/stocks/segments`, {
+    headers: { Authorization: `Bearer ${token}` },
+    next: { revalidate: 3600 },
+  });
+  if (!res.ok) return [];
+  return res.json();
+}
 
 async function fetchStocks(params: {
   page: number;
@@ -71,11 +83,18 @@ export default async function AcoesPage({ searchParams }: PageProps) {
 
   let data: StocksListResponse | null = null;
   let error: string | null = null;
+  let segments: StockSegment[] = [];
 
   try {
-    data = await fetchStocks({ page, search, sector, sortBy, sortOrder });
+    [data, segments] = await Promise.all([
+      fetchStocks({ page, search, sector, sortBy, sortOrder }),
+      fetchSegments(),
+    ]);
   } catch (err) {
     error = err instanceof Error ? err.message : "Erro desconhecido";
+    if (!data) {
+      try { segments = await fetchSegments(); } catch { /* ignora */ }
+    }
   }
 
   return (
@@ -83,7 +102,7 @@ export default async function AcoesPage({ searchParams }: PageProps) {
       <h1 className="text-2xl font-bold text-[var(--foreground)] mb-4">Ações</h1>
 
       <Suspense fallback={null}>
-        <StocksFilters availableSectors={data?.availableSectors ?? []} />
+        <StocksFilters segments={segments} />
       </Suspense>
 
       {error && (

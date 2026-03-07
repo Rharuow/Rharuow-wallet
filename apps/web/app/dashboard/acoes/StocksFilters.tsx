@@ -4,6 +4,7 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useRef } from "react";
 import { Chip, Input, Select } from "rharuow-ds";
 import { useStocksLoading } from "./StocksContext";
+import type { StockSegment } from "../acoes/page";
 
 function SearchIcon() {
   return (
@@ -47,10 +48,10 @@ const SORT_BUTTONS: {
 ];
 
 type Props = {
-  availableSectors?: string[];
+  segments?: StockSegment[];
 };
 
-export function StocksFilters({ availableSectors = [] }: Props) {
+export function StocksFilters({ segments = [] }: Props) {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -149,16 +150,16 @@ export function StocksFilters({ availableSectors = [] }: Props) {
         </div>
       </div>
 
-      {/* Row 2: filtro por setor */}
-      {availableSectors.length > 0 && (
+      {/* Row 2: filtro por segmento */}
+      {segments.length > 0 && (
         <div className="w-full sm:max-w-xs">
           <Select
             name="sector"
-            label="Setor"
+            label="Segmento"
             isClearable
             value={currentSector}
             onChange={(e) => handleSector(e.target.value)}
-            options={availableSectors.map((s) => ({ label: s, value: s }))}
+            options={segments.map((s) => ({ label: s.namePt, value: s.nameEn }))}
           />
         </div>
       )}

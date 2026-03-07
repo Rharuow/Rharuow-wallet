@@ -1,6 +1,7 @@
 import { redis } from '../../lib/redis'
+import { prisma } from '../../lib/prisma'
 import { fetchBrapiStocks, fetchBrapiStockDetail } from '../../lib/brapiStocksClient'
-import type { StockListQuery, StockListResponse, StockDetail } from './stocks.schema'
+import type { StockListQuery, StockListResponse, StockDetail, StockSegment } from './stocks.schema'
 import { StockDetailSchema } from './stocks.schema'
 
 /**
@@ -103,4 +104,21 @@ export async function getStockDetail(ticker: string): Promise<StockDetail | null
   await redis.set(cacheKey, detail, { ex: 60 })
 
   return detail
+}
+
+export async function listSegments(): Promise<StockSegment[]> {
+  const cacheKey = 'brapi:stock:segments'
+
+  const cached = await redis.get<StockSegment[]>(cacheKey)
+  if (cached) return cached
+
+  const segments = await prisma.stockSegment.findMany({
+    orderBy: { namePt: 'asc' },
+    select: { nameEn: true, namePt: true },
+  })
+
+  // Cache por 1 hora — segmentos mudam raramente
+  await redis.set(cacheKey, segments, { ex: 3600 })
+
+  return segments
 }

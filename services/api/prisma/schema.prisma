@@ -84,6 +84,17 @@ model Transaction {
   @@map("transactions")
 }
 
+// ---- Segmentos / setores das ações (mapeamento EN → PT) ----
+model StockSegment {
+  id        String   @id @default(cuid())
+  nameEn    String   @unique @map("name_en")
+  namePt    String   @map("name_pt")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("stock_segments")
+}
+
 // ---- Snapshot bruto vindo da B3 ----
 model B3Snapshot {
   id         String   @id @default(cuid())

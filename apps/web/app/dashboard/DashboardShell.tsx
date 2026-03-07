@@ -34,22 +34,22 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
         <Button onClick={() => setOpen(true)}>
           ☰
         </Button>
-        <Image
-          src="/logo.png"
-          alt="RharouWallet"
-          width={140}
-          height={50}
-          className="object-contain"
-          style={{
-            width: 140,
-            height: 50
-          }}
-        />
-        <div className="ml-auto">
-          <Button variant="outline" onClick={handleLogout}>
-            Sair
-          </Button>
+        <div className="grow flex justify-center">
+          <Image
+            src="/logo.png"
+            alt="RharouWallet"
+            width={140}
+            height={50}
+            className="object-contain"
+            style={{
+              width: 140,
+              height: 50
+            }}
+          />
         </div>
+        <Button variant="outline" onClick={handleLogout}>
+          Sair
+        </Button>
       </header>
 
       {/* Aside Sheet — rendered only after mount to avoid portal hydration mismatch */}
