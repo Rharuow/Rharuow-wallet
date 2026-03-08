@@ -20,15 +20,19 @@ model Role {
 
 // ---- Usuários ----
 model User {
-  id           String    @id @default(cuid())
-  email        String    @unique
-  name         String?
-  passwordHash String    @map("password_hash")
-  roleId       String    @map("role_id")
-  role         Role      @relation(fields: [roleId], references: [id])
-  createdAt    DateTime  @default(now()) @map("created_at")
-  updatedAt    DateTime  @updatedAt @map("updated_at")
-  accounts     Account[]
+  id              String           @id @default(cuid())
+  email           String           @unique
+  name            String?
+  passwordHash    String           @map("password_hash")
+  roleId          String           @map("role_id")
+  role            Role             @relation(fields: [roleId], references: [id])
+  createdAt       DateTime         @default(now()) @map("created_at")
+  updatedAt       DateTime         @updatedAt @map("updated_at")
+  accounts        Account[]
+  costAreas       CostArea[]
+  costTypes       CostType[]
+  costs           Cost[]
+  costRecurrences CostRecurrence[]
 
   @@map("users")
 }
@@ -104,4 +108,97 @@ model B3Snapshot {
   account    Account  @relation(fields: [accountId], references: [id], onDelete: Cascade)
 
   @@map("b3_snapshots")
+}
+
+// ================================================================
+// Gestão de Custos Domésticos
+// ================================================================
+
+// ---- Área de custo (global ou personalizada por usuário) ----
+model CostArea {
+  id        String     @id @default(cuid())
+  name      String
+  // null = área global (padrão do sistema); preenchido = área personalizada do usuário
+  userId    String?    @map("user_id")
+  user      User?      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  costTypes CostType[]
+  createdAt DateTime   @default(now()) @map("created_at")
+  updatedAt DateTime   @updatedAt @map("updated_at")
+  deletedAt DateTime?  @map("deleted_at")
+
+  @@index([userId, name])
+  @@map("cost_areas")
+}
+
+// ---- Tipo de custo (subcategoria dentro de uma área) ----
+model CostType {
+  id          String           @id @default(cuid())
+  name        String
+  areaId      String           @map("area_id")
+  userId      String           @map("user_id")
+  area        CostArea         @relation(fields: [areaId], references: [id])
+  user        User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  costs       Cost[]
+  recurrences CostRecurrence[]
+  createdAt   DateTime         @default(now()) @map("created_at")
+  updatedAt   DateTime         @updatedAt @map("updated_at")
+  deletedAt   DateTime?        @map("deleted_at")
+
+  @@index([areaId, userId, name])
+  @@map("cost_types")
+}
+
+// ---- Unidade de recorrência ----
+enum RecurrenceUnit {
+  DAY
+  WEEK
+  MONTH
+  YEAR
+}
+
+// ---- Regra de recorrência de um custo ----
+model CostRecurrence {
+  id               String         @id @default(cuid())
+  userId           String         @map("user_id")
+  costTypeId       String         @map("cost_type_id")
+  amount           Decimal        @db.Decimal(12, 2)
+  description      String?
+  unit             RecurrenceUnit
+  interval         Int
+  startDate        DateTime       @map("start_date")
+  nextDate         DateTime       @map("next_date")
+  // null = indefinido (encerrado apenas pelo usuário via isActive)
+  maxOccurrences   Int?           @map("max_occurrences")
+  occurrenceCount  Int            @default(0) @map("occurrence_count")
+  isActive         Boolean        @default(true) @map("is_active")
+  user             User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  costType         CostType       @relation(fields: [costTypeId], references: [id])
+  costs            Cost[]
+  createdAt        DateTime       @default(now()) @map("created_at")
+  updatedAt        DateTime       @updatedAt @map("updated_at")
+  deletedAt        DateTime?      @map("deleted_at")
+
+  @@map("cost_recurrences")
+}
+
+// ---- Registro individual de custo ----
+model Cost {
+  id           String          @id @default(cuid())
+  // userId desnormalizado: evita 3 joins nas queries de período por usuário
+  userId       String          @map("user_id")
+  costTypeId   String          @map("cost_type_id")
+  amount       Decimal         @db.Decimal(12, 2)
+  description  String?
+  date         DateTime
+  // null = custo avulso; preenchido = gerado por regra de recorrência
+  recurrenceId String?         @map("recurrence_id")
+  user         User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  costType     CostType        @relation(fields: [costTypeId], references: [id])
+  recurrence   CostRecurrence? @relation(fields: [recurrenceId], references: [id])
+  createdAt    DateTime        @default(now()) @map("created_at")
+  updatedAt    DateTime        @updatedAt @map("updated_at")
+  deletedAt    DateTime?       @map("deleted_at")
+
+  @@index([userId, date])
+  @@map("costs")
 }

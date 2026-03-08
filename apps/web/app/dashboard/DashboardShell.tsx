@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { AsideSheet, Button } from "rharuow-ds";
+import { AsideSheet, Button, Accordion } from "rharuow-ds";
 import Link from "next/link";
 import Image from "next/image";
 import { usePathname, useRouter } from "next/navigation";
@@ -10,6 +10,12 @@ const navItems = [
   { label: "Home", href: "/dashboard" },
   { label: "Ações", href: "/dashboard/acoes" },
   { label: "FIIs", href: "/dashboard/fiis" },
+];
+
+const costSubItems = [
+  { label: "Áreas", href: "/dashboard/custos/areas" },
+  { label: "Custos", href: "/dashboard/custos" },
+  { label: "Resumo", href: "/dashboard/custos/resumo" },
 ];
 
 export function DashboardShell({ children }: { children: React.ReactNode }) {
@@ -94,6 +100,43 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
                 {item.label}
               </Link>
             ))}
+
+            {/* Custos Domésticos — accordion */}
+            <Accordion
+              type="single"
+              collapsible
+              variant="default"
+              className="w-full"
+            >
+              <Accordion.Item
+                title="Custos Domésticos"
+                defaultOpen={pathname.startsWith("/dashboard/custos")}
+                headerClassName={`rounded-lg px-4 py-3 text-sm font-medium transition-colors hover:bg-[var(--primary-light)] ${
+                  pathname.startsWith("/dashboard/custos")
+                    ? "text-[var(--primary)]"
+                    : "text-[var(--foreground)]"
+                }`}
+                contentClassName="pl-4 flex flex-col gap-1"
+              >
+                {costSubItems.map((item) => (
+                  <Link
+                    key={item.href}
+                    href={item.href}
+                    onClick={() => {
+                      (document.activeElement as HTMLElement)?.blur();
+                      setOpen(false);
+                    }}
+                    className={`rounded-lg px-4 py-2 text-sm font-medium transition-colors hover:bg-[var(--primary-light)] ${
+                      pathname === item.href
+                        ? "bg-[var(--primary-light)] text-[var(--primary)]"
+                        : "text-[var(--foreground)]"
+                    }`}
+                  >
+                    {item.label}
+                  </Link>
+                ))}
+              </Accordion.Item>
+            </Accordion>
           </nav>
 
           <div className="mt-auto pt-4">

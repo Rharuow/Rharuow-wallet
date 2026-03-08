@@ -92,4 +92,21 @@ export async function seed(logger?: { info: (msg: string) => void }) {
     // Falha na brapi não deve impedir a inicialização do servidor
     log(`[seed] Aviso: não foi possível sincronizar segmentos via brapi — ${(err as Error).message}`)
   }
+
+  // --- Áreas de custo globais (padrão do sistema) ---
+  const DEFAULT_COST_AREAS = [
+    'Alimentação',
+    'Educação',
+    'Lazer',
+    'Conforto',
+    'Saúde',
+  ]
+
+  for (const name of DEFAULT_COST_AREAS) {
+    const exists = await prisma.costArea.findFirst({ where: { name, userId: null } })
+    if (!exists) {
+      await prisma.costArea.create({ data: { name, userId: null } })
+    }
+  }
+  log(`[seed] ${DEFAULT_COST_AREAS.length} áreas de custo globais sincronizadas.`)
 }
