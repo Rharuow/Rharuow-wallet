@@ -42,7 +42,7 @@ export function BreakdownTable({ byType, byArea, grandTotal }: Props) {
           <Table.Body>
             {byArea.length === 0 && (
               <Table.Row>
-                <Table.Cell colSpan={3} align="center" className="py-6 text-slate-400">
+                <Table.Cell colSpan={3} align="center" className="py-6">
                   Sem dados
                 </Table.Cell>
               </Table.Row>
@@ -56,7 +56,7 @@ export function BreakdownTable({ byType, byArea, grandTotal }: Props) {
                   <span className="text-sm font-medium">{formatBRL(a.total)}</span>
                 </Table.Cell>
                 <Table.Cell align="right">
-                  <span className="text-sm text-slate-500">
+                  <span className="text-sm">
                     {grandTotal > 0 ? ((a.total / grandTotal) * 100).toFixed(1) : "0.0"}%
                   </span>
                 </Table.Cell>
@@ -84,7 +84,7 @@ export function BreakdownTable({ byType, byArea, grandTotal }: Props) {
           <Table.Body>
             {byType.length === 0 && (
               <Table.Row>
-                <Table.Cell colSpan={5} align="center" className="py-6 text-slate-400">
+                <Table.Cell colSpan={5} align="center" className="py-6">
                   Sem dados
                 </Table.Cell>
               </Table.Row>
@@ -92,19 +92,19 @@ export function BreakdownTable({ byType, byArea, grandTotal }: Props) {
             {byType.map((t) => (
               <Table.Row key={t.typeId}>
                 <Table.Cell>
-                  <span className="text-sm text-slate-500">{t.areaName}</span>
+                  <span className="text-sm">{t.areaName}</span>
                 </Table.Cell>
                 <Table.Cell>
                   <span className="text-sm">{t.typeName}</span>
                 </Table.Cell>
                 <Table.Cell align="right">
-                  <span className="text-sm text-slate-500">{t.count}</span>
+                  <span className="text-sm">{t.count}</span>
                 </Table.Cell>
                 <Table.Cell align="right">
                   <span className="text-sm font-medium">{formatBRL(t.total)}</span>
                 </Table.Cell>
                 <Table.Cell align="right">
-                  <span className="text-sm text-slate-500">
+                  <span className="text-sm">
                     {grandTotal > 0 ? ((t.total / grandTotal) * 100).toFixed(1) : "0.0"}%
                   </span>
                 </Table.Cell>

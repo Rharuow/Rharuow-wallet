@@ -1,6 +1,6 @@
 "use client";
 
-import { Card } from "rharuow-ds";
+import { Card, Tooltip } from "rharuow-ds";
 import { formatBRL } from "@/lib/format";
 
 interface Summary {
@@ -29,9 +29,14 @@ export function SummaryCards({ summary }: { summary: Summary }) {
         </span>
       </Card>
       <Card className="p-4 flex flex-col gap-1">
-        <span className="text-xs font-medium uppercase tracking-wide text-slate-500">
-          Ticket médio
-        </span>
+        <Tooltip
+          content="Valor médio por lançamento (Total ÷ Nº de lançamentos)"
+          position="top"
+        >
+          <span className="text-xs font-medium uppercase tracking-wide text-slate-500 cursor-help underline decoration-dotted">
+            Ticket médio
+          </span>
+        </Tooltip>
         <span className="text-2xl font-bold text-[var(--foreground)]">
           {formatBRL(summary.average)}
         </span>
