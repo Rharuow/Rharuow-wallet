@@ -10,6 +10,7 @@ import {
   CreateCostSchema,
   UpdateCostSchema,
   CostListQuerySchema,
+  CostAnalyticsQuerySchema,
 } from './costs.schema'
 import {
   listAreas,
@@ -28,6 +29,7 @@ import {
   createCost,
   updateCost,
   softDeleteCost,
+  analyticsCosts,
 } from './costs.service'
 
 function handleServiceError(err: unknown, reply: FastifyReply) {
@@ -362,6 +364,37 @@ export async function costsRoutes(fastify: FastifyInstance) {
     try {
       await softDeleteCost(request.user.sub, request.params.id)
       return reply.status(204).send()
+    } catch (err) {
+      return handleServiceError(err, reply)
+    }
+  })
+
+  // ----------------------------------------------------------------
+  // Analytics
+  // ----------------------------------------------------------------
+
+  fastify.get<{ Querystring: { dateFrom: string; dateTo: string; areaId?: string; costTypeId?: string } }>('/analytics', {
+    preHandler: authenticate,
+    schema: {
+      tags: ['Costs'],
+      summary: 'Análise de custos por período',
+      security: [{ bearerAuth: [] }],
+      querystring: {
+        type: 'object',
+        required: ['dateFrom', 'dateTo'],
+        properties: {
+          dateFrom: { type: 'string', format: 'date-time' },
+          dateTo: { type: 'string', format: 'date-time' },
+          areaId: { type: 'string', description: 'Filtrar por área' },
+          costTypeId: { type: 'string', description: 'Filtrar por tipo de custo' },
+        },
+      },
+    },
+  }, async (request, reply) => {
+    const query = CostAnalyticsQuerySchema.parse(request.query)
+    try {
+      const analytics = await analyticsCosts(request.user.sub, query)
+      return reply.send(analytics)
     } catch (err) {
       return handleServiceError(err, reply)
     }

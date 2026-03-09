@@ -16,7 +16,7 @@ const costSubItems = [
   { label: "Áreas", href: "/dashboard/custos/areas" },
   { label: "Tipos", href: "/dashboard/custos/tipos" },
   { label: "Custos", href: "/dashboard/custos" },
-  { label: "Resumo", href: "/dashboard/custos/resumo" },
+  { label: "Análise", href: "/dashboard/custos/analise" },
 ];
 
 export function DashboardShell({ children }: { children: React.ReactNode }) {

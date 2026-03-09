@@ -9,6 +9,7 @@ import type {
   CreateCostInput,
   UpdateCostInput,
   CostListQuery,
+  CostAnalyticsQuery,
 } from './costs.schema'
 import { calcNextDate } from './costs.recurrence'
 
@@ -318,4 +319,98 @@ export async function softDeleteCost(userId: string, costId: string) {
   if (!cost) throw Object.assign(new Error('COST_NOT_FOUND'), { statusCode: 404 })
 
   return prisma.cost.update({ where: { id: costId }, data: { deletedAt: new Date() } })
+}
+
+// ================================================================
+// Analytics
+// ================================================================
+
+export async function analyticsCosts(userId: string, query: CostAnalyticsQuery) {
+  const dateFrom = new Date(query.dateFrom)
+  const dateTo = new Date(query.dateTo)
+
+  // Resolve typeIds when filtering by area (without a specific costTypeId)
+  let typeIds: string[] | undefined
+  if (query.areaId && !query.costTypeId) {
+    const types = await prisma.costType.findMany({
+      where: { areaId: query.areaId, userId, deletedAt: null },
+      select: { id: true },
+    })
+    typeIds = types.map((t) => t.id)
+    if (typeIds.length === 0) {
+      return { summary: { total: 0, count: 0, average: 0 }, byMonth: [], byArea: [], byType: [] }
+    }
+  }
+
+  const costs = await prisma.cost.findMany({
+    where: {
+      userId,
+      deletedAt: null,
+      date: { gte: dateFrom, lte: dateTo },
+      ...(query.costTypeId
+        ? { costTypeId: query.costTypeId }
+        : typeIds
+        ? { costTypeId: { in: typeIds } }
+        : {}),
+    },
+    include: {
+      costType: {
+        select: {
+          id: true,
+          name: true,
+          areaId: true,
+          area: { select: { id: true, name: true } },
+        },
+      },
+    },
+    orderBy: { date: 'asc' },
+  })
+
+  // Total geral
+  const total = costs.reduce((sum, c) => sum + Number(c.amount), 0)
+  const count = costs.length
+  const average = count > 0 ? total / count : 0
+
+  // Total por mês (YYYY-MM)
+  const byMonthMap = new Map<string, number>()
+  for (const c of costs) {
+    const key = c.date.toISOString().slice(0, 7) // YYYY-MM
+    byMonthMap.set(key, (byMonthMap.get(key) ?? 0) + Number(c.amount))
+  }
+  const byMonth = Array.from(byMonthMap.entries())
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([month, total]) => ({ month, total }))
+
+  // Total por área
+  const byAreaMap = new Map<string, { areaId: string; areaName: string; total: number }>()
+  for (const c of costs) {
+    const { id: areaId, name: areaName } = c.costType.area
+    const entry = byAreaMap.get(areaId) ?? { areaId, areaName, total: 0 }
+    entry.total += Number(c.amount)
+    byAreaMap.set(areaId, entry)
+  }
+  const byArea = Array.from(byAreaMap.values()).sort((a, b) => b.total - a.total)
+
+  // Total por tipo
+  const byTypeMap = new Map<
+    string,
+    { typeId: string; typeName: string; areaId: string; areaName: string; total: number; count: number }
+  >()
+  for (const c of costs) {
+    const { id: typeId, name: typeName, area } = c.costType
+    const entry = byTypeMap.get(typeId) ?? {
+      typeId,
+      typeName,
+      areaId: area.id,
+      areaName: area.name,
+      total: 0,
+      count: 0,
+    }
+    entry.total += Number(c.amount)
+    entry.count += 1
+    byTypeMap.set(typeId, entry)
+  }
+  const byType = Array.from(byTypeMap.values()).sort((a, b) => b.total - a.total)
+
+  return { summary: { total, count, average }, byMonth, byArea, byType }
 }

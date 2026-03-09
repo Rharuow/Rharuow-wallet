@@ -87,3 +87,15 @@ export const CostListQuerySchema = z.object({
   limit: z.coerce.number().int().positive().max(100).default(20),
 })
 export type CostListQuery = z.infer<typeof CostListQuerySchema>
+
+// ----------------------------------------------------------------
+// Analytics
+// ----------------------------------------------------------------
+
+export const CostAnalyticsQuerySchema = z.object({
+  dateFrom: z.string().datetime(),
+  dateTo: z.string().datetime(),
+  areaId: z.string().cuid().optional(),
+  costTypeId: z.string().cuid().optional(),
+})
+export type CostAnalyticsQuery = z.infer<typeof CostAnalyticsQuerySchema>
