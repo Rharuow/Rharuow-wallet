@@ -14,6 +14,7 @@ const navItems = [
 
 const costSubItems = [
   { label: "Áreas", href: "/dashboard/custos/areas" },
+  { label: "Tipos", href: "/dashboard/custos/tipos" },
   { label: "Custos", href: "/dashboard/custos" },
   { label: "Resumo", href: "/dashboard/custos/resumo" },
 ];
