@@ -111,9 +111,9 @@ export function FiisFilters({ segmentos = [] }: Props) {
 
   return (
     <div className={`flex flex-col gap-4 mb-6 transition-opacity ${isPending ? "opacity-60 pointer-events-none" : ""}`}>
-      {/* Row 1: search + sort */}
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div className="w-full sm:max-w-xs">
+      {/* Row 1: busca + segmento lado a lado */}
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
+        <div className="w-full sm:w-64">
           <Input
             name="search"
             type="text"
@@ -125,36 +125,36 @@ export function FiisFilters({ segmentos = [] }: Props) {
           />
         </div>
 
-        <div className="flex items-center gap-1 flex-wrap">
-          <span className="text-xs text-slate-400 mr-1 whitespace-nowrap">Ordenar por:</span>
-          {SORT_BUTTONS.map(({ field, label }) => {
-            const active = currentSortBy === field;
-            const arrow = active ? (currentSortOrder === "asc" ? " ↑" : " ↓") : "";
-            return (
-              <Chip
-                key={field}
-                label={`${label}${arrow}`}
-                active={active}
-                onChange={() => handleSort(field)}
-              />
-            );
-          })}
-        </div>
+        {segmentos.length > 0 && (
+          <div className="w-full sm:w-56">
+            <Select
+              name="segmento"
+              label="Segmento"
+              isClearable
+              value={currentSegmento}
+              onChange={(e) => handleSegmento(e.target.value)}
+              options={segmentos.map((seg) => ({ label: seg, value: seg }))}
+            />
+          </div>
+        )}
       </div>
 
-      {/* Row 2: segmento filter (only when list is available) */}
-      {segmentos.length > 0 && (
-        <div className="w-full sm:max-w-xs">
-          <Select
-            name="segmento"
-            label="Segmento"
-            isClearable
-            value={currentSegmento}
-            onChange={(e) => handleSegmento(e.target.value)}
-            options={segmentos.map((seg) => ({ label: seg, value: seg }))}
-          />
-        </div>
-      )}
+      {/* Row 2: chips de ordenamento */}
+      <div className="flex items-center gap-1 flex-wrap">
+        <span className="text-xs text-slate-400 mr-1 whitespace-nowrap">Ordenar por:</span>
+        {SORT_BUTTONS.map(({ field, label }) => {
+          const active = currentSortBy === field;
+          const arrow = active ? (currentSortOrder === "asc" ? " ↑" : " ↓") : "";
+          return (
+            <Chip
+              key={field}
+              label={`${label}${arrow}`}
+              active={active}
+              onChange={() => handleSort(field)}
+            />
+          );
+        })}
+      </div>
     </div>
   );
 }
