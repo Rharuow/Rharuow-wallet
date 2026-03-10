@@ -113,9 +113,9 @@ export function StocksFilters({ segments = [] }: Props) {
         isPending ? "opacity-60 pointer-events-none" : ""
       }`}
     >
-      {/* Row 1: busca + sort */}
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div className="w-full sm:max-w-xs">
+      {/* Row 1: busca + segmento lado a lado */}
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
+        <div className="w-full sm:w-64">
           <Input
             name="search"
             type="text"
@@ -127,42 +127,42 @@ export function StocksFilters({ segments = [] }: Props) {
           />
         </div>
 
-        <div className="flex items-center gap-1 flex-wrap">
-          <span className="text-xs text-slate-400 mr-1 whitespace-nowrap">
-            Ordenar por:
-          </span>
-          {SORT_BUTTONS.map(({ field, label }) => {
-            const active = currentSortBy === field;
-            const arrow = active
-              ? currentSortOrder === "asc"
-                ? " ↑"
-                : " ↓"
-              : "";
-            return (
-              <Chip
-                key={field}
-                label={`${label}${arrow}`}
-                active={active}
-                onChange={() => handleSort(field)}
-              />
-            );
-          })}
-        </div>
+        {segments.length > 0 && (
+          <div className="w-full sm:w-56">
+            <Select
+              name="sector"
+              label="Segmento"
+              isClearable
+              value={currentSector}
+              onChange={(e) => handleSector(e.target.value)}
+              options={segments.map((s) => ({ label: s.namePt, value: s.nameEn }))}
+            />
+          </div>
+        )}
       </div>
 
-      {/* Row 2: filtro por segmento */}
-      {segments.length > 0 && (
-        <div className="w-full sm:max-w-xs">
-          <Select
-            name="sector"
-            label="Segmento"
-            isClearable
-            value={currentSector}
-            onChange={(e) => handleSector(e.target.value)}
-            options={segments.map((s) => ({ label: s.namePt, value: s.nameEn }))}
-          />
-        </div>
-      )}
+      {/* Row 2: chips de ordenamento */}
+      <div className="flex items-center gap-1 flex-wrap">
+        <span className="text-xs text-slate-400 mr-1 whitespace-nowrap">
+          Ordenar por:
+        </span>
+        {SORT_BUTTONS.map(({ field, label }) => {
+          const active = currentSortBy === field;
+          const arrow = active
+            ? currentSortOrder === "asc"
+              ? " ↑"
+              : " ↓"
+            : "";
+          return (
+            <Chip
+              key={field}
+              label={`${label}${arrow}`}
+              active={active}
+              onChange={() => handleSort(field)}
+            />
+          );
+        })}
+      </div>
     </div>
   );
 }
