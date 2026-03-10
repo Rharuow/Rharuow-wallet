@@ -45,23 +45,25 @@ export function TypeCreateCard({ areas }: Props) {
   return (
     <Card className="p-4">
       <p className="mb-3 text-sm font-medium text-[var(--foreground)]">Novo tipo</p>
-      <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
-        <Input
-          name="newTypeName"
-          label="Nome do tipo"
-          value={name}
-          onChange={(e) => { setName(e.target.value); setError(null); }}
-          onKeyDown={(e) => { if (e.key === "Enter") handleCreate(); }}
-          containerClassName="flex-1 mb-0"
-        />
-        <Select
-          name="newTypeArea"
-          label="Área"
-          value={areaId}
-          onChange={(e) => setAreaId(e.target.value)}
-          options={areaOptions}
-          containerClassName="flex-1 mb-0"
-        />
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
+        <div className="w-full sm:w-64">
+          <Input
+            name="newTypeName"
+            label="Nome do tipo"
+            value={name}
+            onChange={(e) => { setName(e.target.value); setError(null); }}
+            onKeyDown={(e) => { if (e.key === "Enter") handleCreate(); }}
+          />
+        </div>
+        <div className="w-full sm:w-52">
+          <Select
+            name="newTypeArea"
+            label="Área"
+            value={areaId}
+            onChange={(e) => setAreaId(e.target.value)}
+            options={areaOptions}
+          />
+        </div>
         <Button
           onClick={handleCreate}
           disabled={creating || !name.trim() || !areaId}

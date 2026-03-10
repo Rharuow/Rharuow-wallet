@@ -108,6 +108,16 @@ export function AnalyticsFilter({ areas, types, onChange }: Props) {
     }
   }
 
+  function handleFromChange(value: string) {
+    setFrom(value);
+    setPreset("custom");
+  }
+
+  function handleToChange(value: string) {
+    setTo(value);
+    setPreset("custom");
+  }
+
   function handleArea(value: string) {
     setAreaId(value);
     setCostTypeId("");
@@ -121,58 +131,65 @@ export function AnalyticsFilter({ areas, types, onChange }: Props) {
 
   return (
     <Card className="p-4">
-      <div className="flex flex-wrap items-end gap-3">
-        <Select
-          name="periodPreset"
-          label="Período"
-          value={preset}
-          onChange={(e) => handlePreset(e.target.value)}
-          options={PRESETS}
-          containerClassName="mb-0 min-w-[170px]"
-        />
+      <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-end">
+        <div className="w-full sm:w-48">
+          <Select
+            name="periodPreset"
+            label="Período"
+            value={preset}
+            onChange={(e) => handlePreset(e.target.value)}
+            options={PRESETS}
+          />
+        </div>
+
+        <div className="w-full sm:w-40">
+          <Input
+            name="dateFrom"
+            label="De"
+            type="date"
+            value={from}
+            onChange={(e) => handleFromChange(e.target.value)}
+          />
+        </div>
+        <div className="w-full sm:w-40">
+          <Input
+            name="dateTo"
+            label="Até"
+            type="date"
+            value={to}
+            onChange={(e) => handleToChange(e.target.value)}
+          />
+        </div>
+
         {preset === "custom" && (
-          <>
-            <Input
-              name="dateFrom"
-              label="De"
-              type="date"
-              value={from}
-              onChange={(e) => setFrom(e.target.value)}
-              containerClassName="mb-0"
-            />
-            <Input
-              name="dateTo"
-              label="Até"
-              type="date"
-              value={to}
-              onChange={(e) => setTo(e.target.value)}
-              containerClassName="mb-0"
-            />
-            <Button
-              onClick={() => applyFilters()}
-              disabled={!from || !to}
-              className="self-end"
-            >
-              Aplicar
-            </Button>
-          </>
+          <Button
+            onClick={() => applyFilters()}
+            disabled={!from || !to}
+            className="sm:self-end"
+          >
+            Aplicar
+          </Button>
         )}
 
-        <Select
-          name="filterArea"
-          value={areaId}
-          onChange={(e) => handleArea(e.target.value)}
-          options={areaOptions}
-          containerClassName="mb-0 min-w-[160px]"
-        />
+        <div className="w-full sm:w-48">
+          <Select
+            name="filterArea"
+            label="Área"
+            value={areaId}
+            onChange={(e) => handleArea(e.target.value)}
+            options={areaOptions}
+          />
+        </div>
 
-        <Select
-          name="filterType"
-          value={costTypeId}
-          onChange={(e) => handleType(e.target.value)}
-          options={typeOptions}
-          containerClassName="mb-0 min-w-[160px]"
-        />
+        <div className="w-full sm:w-48">
+          <Select
+            name="filterType"
+            label="Tipo"
+            value={costTypeId}
+            onChange={(e) => handleType(e.target.value)}
+            options={typeOptions}
+          />
+        </div>
       </div>
     </Card>
   );
