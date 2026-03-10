@@ -11,7 +11,7 @@ primary_region = "gru"  # São Paulo (GRU)
   PORT       = "3001"
   NODE_ENV   = "production"
   LOG_LEVEL  = "info"
-  CORS_ORIGIN = "https://rharuowallet-web.fly.dev"
+  CORS_ORIGIN = "https://rharuowallet.vercel.app"
 
 # Secrets sensíveis devem ser configurados via CLI:
 #   flyctl secrets set JWT_SECRET=... DATABASE_URL=... UPSTASH_REDIS_URL=... UPSTASH_REDIS_TOKEN=... --app rharuowallet-api

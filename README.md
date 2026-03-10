@@ -3,10 +3,10 @@
 Monorepo para o MVP do rharuowallet — aplicação de carteira de investimento.
 
 Resumo da arquitetura (MVP)
-- Frontend: Next.js (apps/web) — hospedagem Vercel.
-- Backend: Node.js + TypeScript (services/api) — hospedagem Fly.io.
-- Banco relacional: Supabase (Postgres) — plano gratuito para MVP.
-- Cache: Upstash (Redis) — para cache e locks.
+- Frontend: Next.js (apps/web) — hospedagem **Vercel**.
+- Backend: Node.js + TypeScript (services/api) — hospedagem **Fly.io**.
+- Banco relacional: **Supabase** (Postgres) — plano gratuito para MVP.
+- Cache: **Upstash** (Redis) — para cache e locks.
 
 Decisões importantes
 - Iniciar com um backend único (monolito modular). Separar por serviços no futuro (auth, portfolio, ingest) se necessário.
@@ -82,10 +82,105 @@ cd apps/web && npm run dev
 ```
 
 Checklist imediato para implementação (MVP)
-- [ ] Criar `apps/web` Next.js com página de cadastro.
-- [ ] Criar `services/api` com endpoints de auth/users (Prisma + migrations).
-- [ ] Configurar integração B3 (adapter) e job básico de ingestão.
-- [ ] Configurar deploy no Vercel (frontend) e Fly.io (backend).
+- [x] Criar `apps/web` Next.js com página de cadastro.
+- [x] Criar `services/api` com endpoints de auth/users (Prisma + migrations).
+- [x] Configurar integração B3 (adapter) e job básico de ingestão.
+- [x] Configurar deploy no Vercel (frontend) e Fly.io (backend).
+
+---
+
+## Deploy de Produção
+
+### Stack
+| Camada | Plataforma | Obs |
+|---|---|---|
+| Frontend | Vercel | Deploy automático via Git |
+| Backend | Fly.io | `flyctl deploy` |
+| Banco | Supabase | Postgres gerenciado |
+| Cache | Upstash | Redis serverless |
+
+---
+
+### Passo 1 — Banco de dados (Supabase)
+
+1. Crie conta em [supabase.com](https://supabase.com) e crie um novo projeto.
+2. Em **Project Settings → Database**, copie a **Connection String** (modo *Session* ou *Transaction pooler*):
+   ```
+   postgresql://postgres.[ref]:[password]@aws-0-sa-east-1.pooler.supabase.com:5432/postgres
+   ```
+3. Guarde essa string como `DATABASE_URL` — será usada no Fly.io.
+
+---
+
+### Passo 2 — Cache Redis (Upstash)
+
+1. Crie conta em [upstash.com](https://upstash.com) → **Create Database** → escolha região **São Paulo**.
+2. Copie **UPSTASH_REDIS_URL** e **UPSTASH_REDIS_TOKEN** do painel.
+
+---
+
+### Passo 3 — Backend (Fly.io)
+
+```bash
+# Instalar flyctl (se ainda não tiver)
+curl -L https://fly.io/install.sh | sh
+flyctl auth login
+
+# Na raiz do monorepo:
+cd /home/rharuow/project/rharuowallet
+
+# Criar o app (somente na primeira vez)
+flyctl apps create rharuowallet-api
+
+# Configurar secrets
+flyctl secrets set \
+  DATABASE_URL="postgresql://postgres.[ref]:[password]@..." \
+  JWT_SECRET="$(node -e "console.log(require('crypto').randomBytes(64).toString('hex'))")" \
+  UPSTASH_REDIS_URL="https://..." \
+  UPSTASH_REDIS_TOKEN="..." \
+  BRAPI_TOKEN="..." \
+  --app rharuowallet-api
+
+# Deploy
+flyctl deploy --app rharuowallet-api
+```
+
+> Após o deploy, a API estará em `https://rharuowallet-api.fly.dev`.
+> Confirme que está respondendo: `curl https://rharuowallet-api.fly.dev/health`
+
+---
+
+### Passo 4 — Frontend (Vercel)
+
+1. Acesse [vercel.com](https://vercel.com) → **Add New Project** → importe o repositório GitHub.
+2. Vercel detecta o `vercel.json` na raiz e configura automaticamente `apps/web` como root.
+3. Em **Environment Variables**, adicione:
+
+   | Variável | Valor |
+   |---|---|
+   | `NEXT_PUBLIC_API_URL` | `https://rharuowallet-api.fly.dev` |
+   | `BRAPI_TOKEN` | seu token da brapi.dev (opcional) |
+
+4. Clique em **Deploy**. O domínio final será `https://rharuowallet.vercel.app`.
+
+5. **Após obter o domínio Vercel**, atualize o CORS da API:
+   ```bash
+   flyctl secrets set CORS_ORIGIN="https://rharuowallet.vercel.app" --app rharuowallet-api
+   ```
+
+---
+
+### Redeploy (atualizações futuras)
+
+```bash
+# Backend — a partir da raiz do monorepo
+flyctl deploy --app rharuowallet-api
+
+# Frontend — automático via push para a branch main no GitHub
+git push origin main
+```
+
+---
 
 Integração com dados de mercado (B3)
 
