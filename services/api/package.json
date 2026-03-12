@@ -9,7 +9,8 @@
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate dev",
     "db:migrate:deploy": "prisma migrate deploy",
-    "db:studio": "prisma studio"
+    "db:studio": "prisma studio",
+    "heroku-postbuild": "npx prisma generate && npm run build"
   },
   "dependencies": {
     "@fastify/cors": "^9.0.1",
