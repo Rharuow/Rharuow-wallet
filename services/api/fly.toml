@@ -9,7 +9,7 @@ primary_region = 'ams'
 [build]
 
 [env]
-  PORT       = "3001"
+  PORT       = "8080"
   NODE_ENV   = "production"
   LOG_LEVEL  = "info"
   CORS_ORIGIN = "https://rharuow-wallet-web.vercel.app"
