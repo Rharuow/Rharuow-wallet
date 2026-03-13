@@ -1,3 +1,4 @@
+import { Suspense } from "react";
 import { VerifyEmailClient } from "./VerifyEmailClient";
 
 export const metadata = {
@@ -8,7 +9,9 @@ export default function VerifyEmailPage() {
   return (
     <main className="flex min-h-screen items-center justify-center bg-[var(--background)] px-4">
       <div className="w-full max-w-sm">
-        <VerifyEmailClient />
+        <Suspense fallback={<p className="text-sm text-center">Carregando...</p>}>
+          <VerifyEmailClient />
+        </Suspense>
       </div>
     </main>
   );
