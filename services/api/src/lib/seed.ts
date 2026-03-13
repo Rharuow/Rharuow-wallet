@@ -38,6 +38,18 @@ const PT_TRANSLATIONS: Record<string, string> = {
 export async function seed(logger?: { info: (msg: string) => void }) {
   const log = (msg: string) => logger?.info(msg) ?? console.info(msg)
 
+  // --- Planos (FREE / PREMIUM) ---
+  for (const name of ['FREE', 'PREMIUM'] as const) {
+    await prisma.plan.upsert({
+      where: { name },
+      update: {},
+      create: { name },
+    })
+  }
+  log('[seed] Planos FREE e PREMIUM sincronizados.')
+
+  const premiumPlan = await prisma.plan.findUniqueOrThrow({ where: { name: 'PREMIUM' } })
+
   // --- Root role ---
   let rootRole = await prisma.role.findUnique({ where: { name: 'Root' } })
   if (!rootRole) {
@@ -45,6 +57,15 @@ export async function seed(logger?: { info: (msg: string) => void }) {
     log('[seed] Role "Root" criada.')
   } else {
     log('[seed] Role "Root" já existe.')
+  }
+
+  // --- User role ---
+  const userRole = await prisma.role.findUnique({ where: { name: 'User' } })
+  if (!userRole) {
+    await prisma.role.create({ data: { name: 'User' } })
+    log('[seed] Role "User" criada.')
+  } else {
+    log('[seed] Role "User" já existe.')
   }
 
   // --- Usuário default ---
@@ -63,11 +84,24 @@ export async function seed(logger?: { info: (msg: string) => void }) {
         name: defaultName,
         passwordHash,
         roleId: rootRole.id,
+        isActive: true,
+        // Usuário default é PREMIUM sem prazo de expiração
+        planId: premiumPlan.id,
+        planExpiresAt: null,
       },
     })
-    log(`[seed] Usuário default "${defaultEmail}" criado com role Root.`)
+    log(`[seed] Usuário default "${defaultEmail}" criado com role Root e plano PREMIUM permanente.`)
   } else {
-    log(`[seed] Usuário default "${defaultEmail}" já existe.`)
+    // Garante que o usuário default existente tenha plano PREMIUM permanente
+    if (existing.planId !== premiumPlan.id || existing.planExpiresAt !== null) {
+      await prisma.user.update({
+        where: { id: existing.id },
+        data: { planId: premiumPlan.id, planExpiresAt: null },
+      })
+      log(`[seed] Plano do usuário default "${defaultEmail}" atualizado para PREMIUM permanente.`)
+    } else {
+      log(`[seed] Usuário default "${defaultEmail}" já existe.`)
+    }
   }
 
   // --- Segmentos de ações (sincronizados via brapi) ---

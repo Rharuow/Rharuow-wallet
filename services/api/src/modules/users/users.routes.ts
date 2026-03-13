@@ -33,6 +33,15 @@ export async function usersRoutes(fastify: FastifyInstance) {
                       name: { type: 'string' },
                     },
                   },
+                  plan: {
+                    type: 'object',
+                    nullable: true,
+                    properties: {
+                      id: { type: 'string' },
+                      name: { type: 'string', enum: ['FREE', 'PREMIUM'] },
+                    },
+                  },
+                  planExpiresAt: { type: 'string', format: 'date-time', nullable: true },
                   createdAt: { type: 'string', format: 'date-time' },
                   updatedAt: { type: 'string', format: 'date-time' },
                 },

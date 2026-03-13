@@ -108,6 +108,7 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
           <Image
             src="/logo.png"
             alt="RharouWallet"
+            loading="eager"
             width={140}
             height={50}
             className="object-contain"
@@ -134,6 +135,7 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
             <Image
               src="/logo.png"
               alt="RharouWallet"
+              loading="eager"
               width={140}
               height={50}
               className="object-contain"
@@ -157,6 +159,7 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
               <Image
                 src="/logo.png"
                 alt="RharouWallet"
+                loading="eager"
                 width={140}
                 height={50}
                 className="object-contain"

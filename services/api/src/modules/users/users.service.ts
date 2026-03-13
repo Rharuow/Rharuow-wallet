@@ -9,6 +9,8 @@ export async function getUserById(id: string) {
       email: true,
       name: true,
       role: { select: { id: true, name: true } },
+      plan: { select: { id: true, name: true } },
+      planExpiresAt: true,
       createdAt: true,
       updatedAt: true,
     },

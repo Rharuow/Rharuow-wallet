@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   AreaChart,
   Area,
@@ -51,7 +51,12 @@ const PERIODS: { key: Period; label: string; days: number }[] = [
 export function MarketOverview({ assets }: Props) {
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [period, setPeriod] = useState<Period>("1m");
+  const [mounted, setMounted] = useState(false);
   const selected = assets[selectedIndex] ?? assets[0];
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   if (!selected) return null;
 
@@ -80,7 +85,7 @@ export function MarketOverview({ assets }: Props) {
       </div>
 
       {/* Main chart */}
-      {selected.history.length > 1 && (
+      {mounted && selected.history.length > 1 && (
         <div className="rounded-xl border border-slate-200 bg-[var(--background)] p-4">
           {/* Chart header */}
           <div className="mb-4 flex items-center justify-between">
@@ -123,7 +128,7 @@ export function MarketOverview({ assets }: Props) {
           </div>
 
           <div className="h-60">
-            <ResponsiveContainer width="100%" height="100%">
+            <ResponsiveContainer width="100%" height={240}>
               <AreaChart
                 data={filteredHistory}
                 margin={{ top: 4, right: 4, bottom: 0, left: 0 }}

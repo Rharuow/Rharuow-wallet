@@ -77,7 +77,7 @@ export function MarketCard({ asset, selected = false, onClick }: Props) {
       {/* Sparkline */}
       {asset.history.length > 1 && (
         <div className="mt-3 h-14 -mx-1">
-          <ResponsiveContainer width="100%" height="100%">
+          <ResponsiveContainer width="100%" height={56}>
             <AreaChart
               data={asset.history}
               margin={{ top: 2, right: 0, bottom: 0, left: 0 }}

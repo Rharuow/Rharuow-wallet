@@ -1,6 +1,4 @@
-const AWESOME_BASE = "https://economia.awesomeapi.com.br";
-const BRAPI_BASE = "https://brapi.dev/api";
-const DAYS = 365;
+const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001";
 
 export type HistoryPoint = { date: string; value: number };
 
@@ -13,87 +11,15 @@ export type MarketAsset = {
   history: HistoryPoint[];
 };
 
-type AwesomeDay = {
-  bid: string;
-  pctChange: string;
-  timestamp: string;
-};
-
-async function fetchAwesome(
-  pair: string,
-  code: string,
-  name: string,
-  symbol: string,
-): Promise<MarketAsset> {
-  const res = await fetch(`${AWESOME_BASE}/json/daily/${pair}/${DAYS}`, {
-    next: { revalidate: 1800 },
-  });
-  if (!res.ok) throw new Error(`AwesomeAPI ${pair} failed: ${res.status}`);
-  const data: AwesomeDay[] = await res.json();
-  const history = [...data].reverse().map((d) => ({
-    date: new Date(Number(d.timestamp) * 1000).toLocaleDateString("pt-BR", {
-      day: "2-digit",
-      month: "2-digit",
-    }),
-    value: parseFloat(d.bid),
-  }));
-  return {
-    code,
-    name,
-    symbol,
-    value: parseFloat(data[0].bid),
-    change: parseFloat(data[0].pctChange),
-    history,
-  };
-}
-
-async function fetchIbov(): Promise<MarketAsset> {
-  const token = process.env.BRAPI_TOKEN;
-  const url = new URL(BRAPI_BASE + `/quote/%5EBVSP`);
-  if (token) {
-    url.searchParams.set("token", token);
-    url.searchParams.set("range", "1y");
-    url.searchParams.set("interval", "1d");
-  }
-  const res = await fetch(url.toString(), {
-    next: { revalidate: 1800 },
-  });
-  if (!res.ok) throw new Error(`BRAPI IBOV failed: ${res.status}`);
-  const data = await res.json();
-  const result = data.results?.[0];
-  if (!result) throw new Error("BRAPI no result");
-  const history: HistoryPoint[] = (
-    (result.historicalDataPrice ?? []) as { date: number; close: number }[]
-  )
-    .sort((a, b) => a.date - b.date)
-    .map((d) => ({
-      date: new Date(d.date * 1000).toLocaleDateString("pt-BR", {
-        day: "2-digit",
-        month: "2-digit",
-      }),
-      value: d.close,
-    }));
-  return {
-    code: "IBOV",
-    name: "Ibovespa",
-    symbol: "B3",
-    value: result.regularMarketPrice,
-    change: result.regularMarketChangePercent,
-    history,
-  };
-}
-
 export async function fetchMarketAssets(): Promise<MarketAsset[]> {
-  const results = await Promise.allSettled([
-    fetchAwesome("USD-BRL", "USD", "Dólar", "$"),
-    fetchAwesome("EUR-BRL", "EUR", "Euro", "€"),
-    fetchAwesome("BTC-BRL", "BTC", "Bitcoin", "₿"),
-    fetchIbov(),
-  ]);
-  return results
-    .filter(
-      (r): r is PromiseFulfilledResult<MarketAsset> =>
-        r.status === "fulfilled",
-    )
-    .map((r) => r.value);
+  try {
+    const res = await fetch(`${API_BASE}/v1/market`, {
+      next: { revalidate: 1800 },
+    });
+    if (!res.ok) return [];
+    const data: { assets: MarketAsset[] } = await res.json();
+    return data.assets ?? [];
+  } catch {
+    return [];
+  }
 }

@@ -1,6 +1,6 @@
 import { FastifyInstance } from 'fastify'
 import { loginSchema, registerSchema } from './auth.schema'
-import { loginUser, registerUser } from './auth.service'
+import { loginUser, registerUser, verifyEmail } from './auth.service'
 
 export async function authRoutes(fastify: FastifyInstance) {
   /**
@@ -16,12 +16,12 @@ export async function authRoutes(fastify: FastifyInstance) {
         description: 'Cadastra um novo usuário. Requer roleId válido.',
         body: {
           type: 'object',
-          required: ['email', 'password', 'roleId'],
+          required: ['email', 'password'],
           properties: {
             name: { type: 'string', minLength: 2 },
             email: { type: 'string', format: 'email' },
             password: { type: 'string', minLength: 8 },
-            roleId: { type: 'string', description: 'ID da role do usuário' },
+            roleId: { type: 'string', description: 'ID da role (opcional, padrão: User)' },
           },
         },
         response: {
@@ -41,6 +41,15 @@ export async function authRoutes(fastify: FastifyInstance) {
                       name: { type: 'string' },
                     },
                   },
+                  plan: {
+                    type: 'object',
+                    nullable: true,
+                    properties: {
+                      id: { type: 'string' },
+                      name: { type: 'string', enum: ['FREE', 'PREMIUM'] },
+                    },
+                  },
+                  planExpiresAt: { type: 'string', format: 'date-time', nullable: true },
                   createdAt: { type: 'string', format: 'date-time' },
                 },
               },
@@ -108,6 +117,41 @@ export async function authRoutes(fastify: FastifyInstance) {
         { expiresIn: '7d' },
       )
       return reply.send({ token, user })
+    },
+  )
+
+  /**
+   * GET /v1/auth/verify-email?token=xxx
+   * Confirma o e-mail e ativa a conta do usuário.
+   */
+  fastify.get(
+    '/verify-email',
+    {
+      schema: {
+        tags: ['Auth'],
+        summary: 'Verificar e-mail',
+        description: 'Ativa a conta do usuário a partir do token enviado por e-mail.',
+        querystring: {
+          type: 'object',
+          required: ['token'],
+          properties: {
+            token: { type: 'string' },
+          },
+        },
+        response: {
+          200: {
+            type: 'object',
+            properties: {
+              message: { type: 'string' },
+            },
+          },
+        },
+      },
+    },
+    async (request, reply) => {
+      const { token } = request.query as { token: string }
+      await verifyEmail(token)
+      return reply.send({ message: 'E-mail confirmado. Você já pode fazer login.' })
     },
   )
 }
