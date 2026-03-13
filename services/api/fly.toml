@@ -17,6 +17,9 @@ primary_region = 'ams'
 # Secrets sensíveis devem ser configurados via CLI:
 #   flyctl secrets set JWT_SECRET=... DATABASE_URL=... UPSTASH_REDIS_URL=... UPSTASH_REDIS_TOKEN=... --app rharuowallet-api
 
+[deploy]
+  release_command = "npx prisma migrate deploy"
+
 [http_service]
   internal_port = 8080
   force_https = true
