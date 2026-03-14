@@ -10,6 +10,7 @@ const navItems = [
   { label: "Home", href: "/dashboard" },
   { label: "Ações", href: "/dashboard/acoes" },
   { label: "FIIs", href: "/dashboard/fiis" },
+  { label: "Premium ✨", href: "/dashboard/premium" },
 ];
 
 const costSubItems = [

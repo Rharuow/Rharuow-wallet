@@ -38,25 +38,27 @@ model Role {
 
 // ---- Usuários ----
 model User {
-  id              String              @id @default(cuid())
-  email           String              @unique
-  name            String?
-  passwordHash    String              @map("password_hash")
-  isActive        Boolean             @default(false) @map("is_active")
-  roleId          String              @map("role_id")
-  role            Role                @relation(fields: [roleId], references: [id])
-  planId          String?             @map("plan_id")
-  plan            Plan?               @relation(fields: [planId], references: [id])
+  id                     String              @id @default(cuid())
+  email                  String              @unique
+  name                   String?
+  passwordHash           String              @map("password_hash")
+  isActive               Boolean             @default(false) @map("is_active")
+  roleId                 String              @map("role_id")
+  role                   Role                @relation(fields: [roleId], references: [id])
+  planId                 String?             @map("plan_id")
+  plan                   Plan?               @relation(fields: [planId], references: [id])
   // null = plano sem expiração (ex: usuário default/admin ou pagante ativo)
-  planExpiresAt   DateTime?           @map("plan_expires_at")
-  createdAt       DateTime            @default(now()) @map("created_at")
-  updatedAt       DateTime            @updatedAt @map("updated_at")
-  accounts        Account[]
-  costAreas       CostArea[]
-  costTypes       CostType[]
-  costs           Cost[]
-  costRecurrences CostRecurrence[]
-  emailTokens     EmailVerifyToken[]
+  planExpiresAt          DateTime?           @map("plan_expires_at")
+  stripeCustomerId       String?             @unique @map("stripe_customer_id")
+  stripeSubscriptionId   String?             @unique @map("stripe_subscription_id")
+  createdAt              DateTime            @default(now()) @map("created_at")
+  updatedAt              DateTime            @updatedAt @map("updated_at")
+  accounts               Account[]
+  costAreas              CostArea[]
+  costTypes              CostType[]
+  costs                  Cost[]
+  costRecurrences        CostRecurrence[]
+  emailTokens            EmailVerifyToken[]
 
   @@map("users")
 }

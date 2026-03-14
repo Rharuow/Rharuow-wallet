@@ -1,16 +1,37 @@
-import { getAuthUser } from "@/lib/auth";
+import { getAuthUser, getAuthToken } from "@/lib/auth";
 import { fetchMarketAssets } from "@/lib/market";
 import { MarketOverview } from "@/components/MarketOverview";
+import Link from "next/link";
 
 export const metadata = {
   title: "Home — RharouWallet",
 };
 
+async function getPlan(token: string): Promise<"FREE" | "PREMIUM"> {
+  try {
+    const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001";
+    const res = await fetch(`${API_BASE}/v1/payments/status`, {
+      headers: { Authorization: `Bearer ${token}` },
+      cache: "no-store",
+    });
+    if (!res.ok) return "FREE";
+    const data = await res.json();
+    return data.plan ?? "FREE";
+  } catch {
+    return "FREE";
+  }
+}
+
 export default async function DashboardHome() {
-  const [user, assets] = await Promise.all([
+  const token = await getAuthToken();
+  const [user, assets, plan] = await Promise.all([
     getAuthUser(),
     fetchMarketAssets(),
+    token ? getPlan(token) : Promise.resolve<"FREE" | "PREMIUM">("FREE"),
   ]);
+
+  const showUpgradeBanner =
+    !plan || plan === "FREE";
 
   return (
     <div className="space-y-6">
@@ -22,6 +43,26 @@ export default async function DashboardHome() {
           Bem-vindo ao RharouWallet.
         </p>
       </div>
+
+      {showUpgradeBanner && (
+        <Link
+          href="/dashboard/premium"
+          className="flex items-center justify-between gap-4 rounded-xl border border-[var(--primary)]/40 bg-[var(--primary)]/5 px-5 py-4 transition-colors hover:bg-[var(--primary)]/10"
+        >
+          <div>
+            <p className="text-sm font-semibold text-[var(--primary)]">
+              ✨ Torne-se Premium
+            </p>
+            <p className="text-xs text-slate-500 mt-0.5">
+              A partir de R$ 12,90/mês. Acesso completo a todos os recursos.
+            </p>
+          </div>
+          <span className="shrink-0 rounded-lg bg-[var(--primary)] px-4 py-1.5 text-xs font-semibold text-white">
+            Ver planos
+          </span>
+        </Link>
+      )}
+
       <MarketOverview assets={assets} />
     </div>
   );

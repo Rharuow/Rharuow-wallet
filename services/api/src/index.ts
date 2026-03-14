@@ -1,5 +1,5 @@
 import 'dotenv/config'
-import Fastify from 'fastify'
+import Fastify, { FastifyRequest } from 'fastify'
 import cors from '@fastify/cors'
 import helmet from '@fastify/helmet'
 import jwt from '@fastify/jwt'
@@ -15,6 +15,7 @@ import { fiisRoutes } from './modules/fiis/fiis.routes'
 import { stocksRoutes } from './modules/stocks/stocks.routes'
 import { costsRoutes } from './modules/costs/costs.routes'
 import { marketRoutes } from './modules/market/market.routes'
+import { paymentsRoutes } from './modules/payments/payments.routes'
 import { seed } from './lib/seed'
 
 if (!process.env.JWT_SECRET) {
@@ -26,6 +27,20 @@ const server = Fastify({
     level: process.env.LOG_LEVEL ?? 'info',
   },
 })
+
+// Preserva o rawBody para verificação de assinatura do Stripe
+server.addContentTypeParser(
+  'application/json',
+  { parseAs: 'buffer' },
+  (req, body, done) => {
+    ;(req as FastifyRequest & { rawBody?: Buffer }).rawBody = body as Buffer
+    try {
+      done(null, JSON.parse((body as Buffer).toString()))
+    } catch (e) {
+      done(e as Error, undefined)
+    }
+  },
+)
 
 async function bootstrap() {
   // --- Plugins de segurança ---
@@ -95,6 +110,7 @@ async function bootstrap() {
   await server.register(stocksRoutes, { prefix: '/v1' })
   await server.register(costsRoutes, { prefix: '/v1/costs' })
   await server.register(marketRoutes, { prefix: '/v1' })
+  await server.register(paymentsRoutes, { prefix: '/v1' })
 
   // --- Health check ---
   server.get(
