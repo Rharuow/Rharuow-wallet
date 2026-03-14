@@ -1,5 +1,6 @@
-import { getAuthToken } from "@/lib/auth";
+import { getAuthToken, getPlan } from "@/lib/auth";
 import { AnalysisShell } from "./AnalysisShell";
+import { PremiumGate } from "@/components/PremiumGate";
 
 export const metadata = { title: "Análise de Custos — RharouWallet" };
 
@@ -29,7 +30,11 @@ async function fetchTypes(token: string | null) {
 
 export default async function AnalisePage() {
   const token = await getAuthToken();
-  const [areas, types] = await Promise.all([fetchAreas(token), fetchTypes(token)]);
+  const [plan, areas, types] = await Promise.all([
+    token ? getPlan(token) : Promise.resolve<"FREE" | "PREMIUM">("FREE"),
+    fetchAreas(token),
+    fetchTypes(token),
+  ]);
 
   return (
     <div className="flex flex-col gap-6">
@@ -41,7 +46,11 @@ export default async function AnalisePage() {
           Visualize seus custos domésticos por período, área e tipo.
         </p>
       </div>
-      <AnalysisShell areas={areas} types={types} />
+      {plan !== "PREMIUM" ? (
+        <PremiumGate feature="A análise de custos domésticos" />
+      ) : (
+        <AnalysisShell areas={areas} types={types} />
+      )}
     </div>
   );
 }

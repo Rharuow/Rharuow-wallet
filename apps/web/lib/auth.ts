@@ -13,6 +13,24 @@ export async function getAuthToken(): Promise<string | null> {
   return cookieStore.get("auth_token")?.value ?? null;
 }
 
+export async function getPlan(
+  token: string
+): Promise<"FREE" | "PREMIUM"> {
+  try {
+    const API_BASE =
+      process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001";
+    const res = await fetch(`${API_BASE}/v1/payments/status`, {
+      headers: { Authorization: `Bearer ${token}` },
+      cache: "no-store",
+    });
+    if (!res.ok) return "FREE";
+    const data = await res.json();
+    return data.plan ?? "FREE";
+  } catch {
+    return "FREE";
+  }
+}
+
 export async function getAuthUser(): Promise<AuthUser | null> {
   const token = await getAuthToken();
   if (!token) return null;

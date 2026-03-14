@@ -1,8 +1,13 @@
+import { getAuthToken, getPlan } from "@/lib/auth";
 import { IncomeAnalysisShell } from "./IncomeAnalysisShell";
+import { PremiumGate } from "@/components/PremiumGate";
 
 export const metadata = { title: "Análise de Entradas — RharouWallet" };
 
-export default function IncomeAnalysisPage() {
+export default async function IncomeAnalysisPage() {
+  const token = await getAuthToken();
+  const plan = token ? await getPlan(token) : "FREE";
+
   return (
     <div className="flex flex-col gap-6">
       <div>
@@ -13,7 +18,11 @@ export default function IncomeAnalysisPage() {
           Visualize sua evolução de receitas por período.
         </p>
       </div>
-      <IncomeAnalysisShell />
+      {plan !== "PREMIUM" ? (
+        <PremiumGate feature="A análise de entradas" />
+      ) : (
+        <IncomeAnalysisShell />
+      )}
     </div>
   );
 }
