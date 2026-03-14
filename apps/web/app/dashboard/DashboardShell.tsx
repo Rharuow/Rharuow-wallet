@@ -20,6 +20,11 @@ const costSubItems = [
   { label: "Análise", href: "/dashboard/custos/analise" },
 ];
 
+const incomeSubItems = [
+  { label: "Entradas", href: "/dashboard/entradas" },
+  { label: "Análise", href: "/dashboard/entradas/analise" },
+];
+
 function NavContent({
   pathname,
   onLinkClick,
@@ -61,6 +66,39 @@ function NavContent({
           contentClassName="pl-4 flex flex-col gap-1"
         >
           {costSubItems.map((item) => (
+            <Link
+              key={item.href}
+              href={item.href}
+              onClick={onLinkClick}
+              className={`rounded-lg px-4 py-2 text-sm font-medium transition-colors hover:bg-[var(--primary-light)] ${
+                pathname === item.href
+                  ? "bg-[var(--primary-light)] text-[var(--primary)]"
+                  : "text-[var(--foreground)]"
+              }`}
+            >
+              {item.label}
+            </Link>
+          ))}
+        </Accordion.Item>
+      </Accordion>
+
+      <Accordion
+        type="single"
+        collapsible
+        variant="default"
+        className="w-full"
+      >
+        <Accordion.Item
+          title="Entradas"
+          defaultOpen={pathname.startsWith("/dashboard/entradas")}
+          headerClassName={`rounded-lg px-4 py-3 text-sm font-medium transition-colors hover:bg-[var(--primary-light)] ${
+            pathname.startsWith("/dashboard/entradas")
+              ? "text-[var(--primary)]"
+              : "text-[var(--foreground)]"
+          }`}
+          contentClassName="pl-4 flex flex-col gap-1"
+        >
+          {incomeSubItems.map((item) => (
             <Link
               key={item.href}
               href={item.href}

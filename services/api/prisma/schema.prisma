@@ -58,6 +58,8 @@ model User {
   costTypes              CostType[]
   costs                  Cost[]
   costRecurrences        CostRecurrence[]
+  incomes                Income[]
+  incomeRecurrences      IncomeRecurrence[]
   emailTokens            EmailVerifyToken[]
 
   @@map("users")
@@ -241,4 +243,53 @@ model Cost {
 
   @@index([userId, date])
   @@map("costs")
+}
+
+// ================================================================
+// Gestão de Entradas (Receitas)
+// ================================================================
+
+// ---- Regra de recorrência de uma entrada ----
+model IncomeRecurrence {
+  id               String         @id @default(cuid())
+  userId           String         @map("user_id")
+  name             String
+  description      String?
+  amount           Decimal        @db.Decimal(12, 2)
+  unit             RecurrenceUnit
+  interval         Int
+  startDate        DateTime       @map("start_date")
+  nextDate         DateTime       @map("next_date")
+  // null = indefinido (encerrado apenas pelo usuário)
+  maxOccurrences   Int?           @map("max_occurrences")
+  occurrenceCount  Int            @default(0) @map("occurrence_count")
+  isActive         Boolean        @default(true) @map("is_active")
+  user             User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  incomes          Income[]
+  createdAt        DateTime       @default(now()) @map("created_at")
+  updatedAt        DateTime       @updatedAt @map("updated_at")
+  deletedAt        DateTime?      @map("deleted_at")
+
+  @@index([userId])
+  @@map("income_recurrences")
+}
+
+// ---- Registro individual de entrada ----
+model Income {
+  id              String             @id @default(cuid())
+  userId          String             @map("user_id")
+  name            String
+  description     String?
+  amount          Decimal            @db.Decimal(12, 2)
+  date            DateTime
+  // null = entrada avulsa; preenchido = gerada por recorrência
+  recurrenceId    String?            @map("recurrence_id")
+  user            User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  recurrence      IncomeRecurrence?  @relation(fields: [recurrenceId], references: [id])
+  createdAt       DateTime           @default(now()) @map("created_at")
+  updatedAt       DateTime           @updatedAt @map("updated_at")
+  deletedAt       DateTime?          @map("deleted_at")
+
+  @@index([userId, date])
+  @@map("incomes")
 }

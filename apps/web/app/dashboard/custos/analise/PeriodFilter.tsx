@@ -174,7 +174,6 @@ export function AnalyticsFilter({ areas, types, onChange }: Props) {
         <div className="w-full sm:w-48">
           <Select
             name="filterArea"
-            label="Área"
             value={areaId}
             onChange={(e) => handleArea(e.target.value)}
             options={areaOptions}
@@ -184,7 +183,6 @@ export function AnalyticsFilter({ areas, types, onChange }: Props) {
         <div className="w-full sm:w-48">
           <Select
             name="filterType"
-            label="Tipo"
             value={costTypeId}
             onChange={(e) => handleType(e.target.value)}
             options={typeOptions}

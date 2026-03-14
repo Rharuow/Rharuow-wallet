@@ -14,6 +14,7 @@ import { rolesRoutes } from './modules/roles/roles.routes'
 import { fiisRoutes } from './modules/fiis/fiis.routes'
 import { stocksRoutes } from './modules/stocks/stocks.routes'
 import { costsRoutes } from './modules/costs/costs.routes'
+import { incomesRoutes } from './modules/incomes/incomes.routes'
 import { marketRoutes } from './modules/market/market.routes'
 import { paymentsRoutes } from './modules/payments/payments.routes'
 import { seed } from './lib/seed'
@@ -87,6 +88,7 @@ async function bootstrap() {
         { name: 'FIIs', description: 'Fundos de Investimento Imobiliário (dados via Fundamentus)' },
         { name: 'Stocks', description: 'Ações da B3 (dados via Fundamentus)' },
         { name: 'Costs', description: 'Gestão de custos domésticos' },
+        { name: 'Incomes', description: 'Gestão de entradas (receitas)' },
         { name: 'Market', description: 'Visão geral do mercado (USD, EUR, BTC, Ibovespa)' },
       ],
     },
@@ -109,6 +111,7 @@ async function bootstrap() {
   await server.register(fiisRoutes, { prefix: '/v1' })
   await server.register(stocksRoutes, { prefix: '/v1' })
   await server.register(costsRoutes, { prefix: '/v1/costs' })
+  await server.register(incomesRoutes, { prefix: '/v1/incomes' })
   await server.register(marketRoutes, { prefix: '/v1' })
   await server.register(paymentsRoutes, { prefix: '/v1' })
 
