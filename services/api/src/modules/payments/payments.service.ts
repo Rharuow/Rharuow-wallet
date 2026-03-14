@@ -28,7 +28,7 @@ export async function createCheckoutSession(userId: string, priceId: string) {
     mode: 'subscription',
     line_items: [{ price: priceId, quantity: 1 }],
     // Habilita cartão e PIX — configure no Stripe Dashboard em Payment Methods
-    success_url: `${APP_URL}/dashboard?upgraded=true`,
+    success_url: `${APP_URL}/dashboard/premium/ativado?session_id={CHECKOUT_SESSION_ID}`,
     cancel_url: `${APP_URL}/dashboard/premium`,
     subscription_data: {
       metadata: { userId },
@@ -85,6 +85,47 @@ export async function getPaymentStatus(userId: string) {
   }
 }
 
+// ---- Ativação via session (fallback para dev sem webhook) ----
+
+export async function activateFromSession(userId: string, sessionId: string) {
+  const session = await stripe.checkout.sessions.retrieve(sessionId, {
+    expand: ['subscription'],
+  })
+
+  if (session.status !== 'complete') {
+    const err = new Error('Sessão de checkout não concluída') as Error & { statusCode: number }
+    err.statusCode = 400
+    throw err
+  }
+
+  const user = await prisma.user.findUniqueOrThrow({
+    where: { id: userId },
+    select: { stripeCustomerId: true },
+  })
+
+  // Garante que a sessão pertence a este usuário
+  if (session.customer !== user.stripeCustomerId) {
+    const err = new Error('Sessão não corresponde ao usuário autenticado') as Error & { statusCode: number }
+    err.statusCode = 403
+    throw err
+  }
+
+  const subscription = session.subscription as Stripe.Subscription
+  const premiumPlan = await prisma.plan.findUniqueOrThrow({ where: { name: 'PREMIUM' } })
+  const periodEnd = new Date(subscription.items.data[0].current_period_end * 1000)
+
+  await prisma.user.update({
+    where: { id: userId },
+    data: {
+      planId: premiumPlan.id,
+      planExpiresAt: periodEnd,
+      stripeSubscriptionId: subscription.id,
+    },
+  })
+
+  return { plan: 'PREMIUM', planExpiresAt: periodEnd }
+}
+
 // ---- Webhook ----
 
 export async function handleWebhook(rawBody: Buffer, signature: string) {
@@ -110,8 +151,8 @@ export async function handleWebhook(rawBody: Buffer, signature: string) {
 
       const premiumPlan = await prisma.plan.findUniqueOrThrow({ where: { name: 'PREMIUM' } })
 
-      // Calcula expiração com base no período da assinatura
-      const periodEnd = new Date((subscription as unknown as { current_period_end: number }).current_period_end * 1000)
+      // Calcula expiração com base no período da assinatura (Stripe v20: campo em items)
+      const periodEnd = new Date(subscription.items.data[0].current_period_end * 1000)
 
       await prisma.user.update({
         where: { id: userId },
@@ -138,7 +179,7 @@ export async function handleWebhook(rawBody: Buffer, signature: string) {
       const userId = subscription.metadata?.userId
       if (!userId) break
 
-      const periodEnd = new Date((subscription as unknown as { current_period_end: number }).current_period_end * 1000)
+      const periodEnd = new Date(subscription.items.data[0].current_period_end * 1000)
 
       await prisma.user.update({
         where: { id: userId },

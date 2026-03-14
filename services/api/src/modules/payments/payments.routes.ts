@@ -5,6 +5,7 @@ import {
   cancelSubscription,
   getPaymentStatus,
   handleWebhook,
+  activateFromSession,
 } from './payments.service'
 import { checkoutSchema } from './payments.schema'
 
@@ -60,6 +61,21 @@ export async function paymentsRoutes(fastify: FastifyInstance) {
 
       await handleWebhook(rawBody, signature)
       return reply.send({ received: true })
+    },
+  )
+
+  // POST /v1/payments/activate — ativa plano após checkout (fallback sem webhook)
+  fastify.post(
+    '/payments/activate',
+    { preHandler: authenticate },
+    async (request: FastifyRequest, reply: FastifyReply) => {
+      const { sub: userId } = request.user as { sub: string }
+      const { sessionId } = request.body as { sessionId: string }
+      if (!sessionId) {
+        return reply.status(400).send({ error: 'sessionId é obrigatório' })
+      }
+      const result = await activateFromSession(userId, sessionId)
+      return reply.send(result)
     },
   )
 }

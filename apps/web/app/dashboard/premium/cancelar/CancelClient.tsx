@@ -40,8 +40,8 @@ export function CancelClient() {
             ⏳
           </span>
           <div>
-            <p className="text-lg font-semibold text-amber-800">Cancelamento agendado</p>
-            <p className="mt-1 text-sm text-amber-700">
+            <p className="text-lg font-semibold text-amber-200">Cancelamento agendado</p>
+            <p className="mt-1 text-sm text-amber-300">
               Você continua com acesso Premium até o fim do período pago. Após o vencimento,
               seu plano retorna automaticamente para o gratuito.
             </p>

@@ -106,8 +106,8 @@ export function PremiumClient({ cancelAtPeriodEnd, planExpiresAt, isPremium }: P
 
           {/* features summary */}
           <ul className="divide-y divide-[var(--primary)]/10 rounded-lg border border-[var(--primary)]/20 bg-white/60 dark:bg-black/10">
-            {FEATURES.map((f) => (
-              <li key={f.text} className="flex items-center gap-3 px-4 py-2.5 text-sm">
+            {FEATURES.map((f, index) => (
+              <li key={index} className="flex items-center gap-3 px-4 py-2.5 text-sm">
                 <span>{f.icon}</span>
                 {f.text}
               </li>
@@ -118,8 +118,8 @@ export function PremiumClient({ cancelAtPeriodEnd, planExpiresAt, isPremium }: P
           {cancelAtPeriodEnd ? (
             <Card variant="flat" className="border border-amber-200 bg-amber-50">
               <Card.Body>
-                <p className="text-sm font-medium text-amber-800">⚠️ Cancelamento agendado</p>
-                <p className="mt-1 text-xs text-amber-700">
+                <p className="text-sm font-medium text-amber-200">⚠️ Cancelamento agendado</p>
+                <p className="mt-1 text-xs text-amber-300">
                   Seu acesso Premium continua ativo até {expiryDate}. Após essa data o plano
                   retorna para o gratuito.
                 </p>
@@ -156,20 +156,20 @@ export function PremiumClient({ cancelAtPeriodEnd, planExpiresAt, isPremium }: P
 
       {/* features */}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-        {FEATURES.map((f) => (
+        {FEATURES.map((f, index) => (
           <div
-            key={f.text}
+            key={index}
             className="flex flex-col items-center gap-1.5 rounded-xl border border-slate-100 bg-[var(--background)] p-3 text-center shadow-sm"
           >
             <span className="text-2xl">{f.icon}</span>
-            <p className="text-xs text-slate-600 leading-snug">{f.text}</p>
+            <p className="text-xs leading-snug">{f.text}</p>
           </div>
         ))}
       </div>
 
       {/* plan cards */}
       <div className="space-y-3">
-        <p className="text-xs font-medium uppercase tracking-wider text-slate-400">
+        <p className="text-xs font-medium uppercase tracking-wider">
           Escolha seu plano
         </p>
 
@@ -182,8 +182,8 @@ export function PremiumClient({ cancelAtPeriodEnd, planExpiresAt, isPremium }: P
         )}
 
         <div className="grid gap-4 sm:grid-cols-2">
-          {PLANS.map((plan) => (
-            <div key={plan.priceId} className="relative">
+          {PLANS.map((plan, index) => (
+            <div key={index} className="relative">
               {plan.badge && (
                 <div className="absolute -top-3 left-0 right-0 flex justify-center z-10">
                   <Chip label={plan.badge} active />
@@ -225,7 +225,7 @@ export function PremiumClient({ cancelAtPeriodEnd, planExpiresAt, isPremium }: P
         </div>
       </div>
 
-      <p className="text-center text-xs text-slate-400">
+      <p className="text-center text-xs">
         🔒 Pagamento seguro via Stripe · Cancele quando quiser
       </p>
     </div>

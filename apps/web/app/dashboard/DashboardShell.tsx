@@ -29,9 +29,9 @@ function NavContent({
 }) {
   return (
     <nav className="flex flex-col gap-1">
-      {navItems.map((item) => (
+      {navItems.map((item, index) => (
         <Link
-          key={item.href}
+          key={index}
           href={item.href}
           onClick={onLinkClick}
           className={`rounded-lg px-4 py-3 text-sm font-medium transition-colors hover:bg-[var(--primary-light)] ${
