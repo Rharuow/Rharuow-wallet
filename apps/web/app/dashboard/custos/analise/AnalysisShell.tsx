@@ -5,6 +5,7 @@ import { AnalyticsFilter, Filters } from "./PeriodFilter";
 import { SummaryCards } from "./SummaryCards";
 import { AnalyticsCharts } from "./AnalyticsCharts";
 import { BreakdownTable } from "./BreakdownTable";
+import { InsightsCard } from "../../../../components/InsightsCard";
 
 interface ByMonth { month: string; total: number }
 interface ByArea  { areaId: string; areaName: string; total: number }
@@ -27,10 +28,12 @@ interface Props {
 
 export function AnalysisShell({ areas, types }: Props) {
   const [analytics, setAnalytics] = useState<Analytics | null>(null);
+  const [filters, setFilters] = useState<Filters | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const handleFilters = useCallback(async (filters: Filters) => {
+    setFilters(filters);
     setLoading(true);
     setError(null);
     try {
@@ -70,6 +73,14 @@ export function AnalysisShell({ areas, types }: Props) {
             byArea={analytics.byArea}
             grandTotal={analytics.summary.total}
           />
+          {filters && (
+            <InsightsCard
+              key={`${filters.dateFrom}-${filters.dateTo}`}
+              type="costs"
+              period={{ dateFrom: filters.dateFrom, dateTo: filters.dateTo }}
+              analytics={analytics as unknown as Record<string, unknown>}
+            />
+          )}
         </>
       )}
     </div>

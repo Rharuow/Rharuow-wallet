@@ -16,6 +16,7 @@ import {
 } from "recharts";
 import { Card, Tooltip } from "rharuow-ds";
 import { formatBRL } from "../types";
+import { InsightsCard } from "../../../../components/InsightsCard";
 
 // ----------------------------------------------------------------
 // Types
@@ -206,10 +207,12 @@ function PeriodFilter({
 export function IncomeAnalysisShell() {
   const [analytics, setAnalytics] = useState<Analytics | null>(null);
   const [costTotal, setCostTotal] = useState<number | null>(null);
+  const [appliedFilters, setAppliedFilters] = useState<Filters>(DEFAULT_DATES);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const handleFilters = useCallback(async (filters: Filters) => {
+    setAppliedFilters(filters);
     setLoading(true);
     setError(null);
     try {
@@ -438,6 +441,15 @@ export function IncomeAnalysisShell() {
               </tbody>
             </table>
           </Card>
+
+          {/* AI Insights */}
+          <InsightsCard
+            key={`${appliedFilters.dateFrom}-${appliedFilters.dateTo}`}
+            type="incomes"
+            period={{ dateFrom: appliedFilters.dateFrom, dateTo: appliedFilters.dateTo }}
+            analytics={analytics as unknown as Record<string, unknown>}
+            costTotal={costTotal ?? undefined}
+          />
         </>
       )}
     </div>

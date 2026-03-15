@@ -17,6 +17,7 @@ import { costsRoutes } from './modules/costs/costs.routes'
 import { incomesRoutes } from './modules/incomes/incomes.routes'
 import { marketRoutes } from './modules/market/market.routes'
 import { paymentsRoutes } from './modules/payments/payments.routes'
+import { aiRoutes } from './modules/ai/ai.routes'
 import { seed } from './lib/seed'
 
 if (!process.env.JWT_SECRET) {
@@ -90,6 +91,7 @@ async function bootstrap() {
         { name: 'Costs', description: 'Gestão de custos domésticos' },
         { name: 'Incomes', description: 'Gestão de entradas (receitas)' },
         { name: 'Market', description: 'Visão geral do mercado (USD, EUR, BTC, Ibovespa)' },
+        { name: 'AI', description: 'Insights financeiros com Inteligência Artificial' },
       ],
     },
   })
@@ -114,6 +116,7 @@ async function bootstrap() {
   await server.register(incomesRoutes, { prefix: '/v1/incomes' })
   await server.register(marketRoutes, { prefix: '/v1' })
   await server.register(paymentsRoutes, { prefix: '/v1' })
+  await server.register(aiRoutes, { prefix: '/v1/ai' })
 
   // --- Health check ---
   server.get(
