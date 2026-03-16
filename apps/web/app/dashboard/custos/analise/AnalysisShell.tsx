@@ -6,6 +6,7 @@ import { SummaryCards } from "./SummaryCards";
 import { AnalyticsCharts } from "./AnalyticsCharts";
 import { BreakdownTable } from "./BreakdownTable";
 import { InsightsCard } from "../../../../components/InsightsCard";
+import { BudgetGoalsCard } from "./BudgetGoalsCard";
 
 interface ByMonth { month: string; total: number }
 interface ByArea  { areaId: string; areaName: string; total: number }
@@ -79,6 +80,15 @@ export function AnalysisShell({ areas, types }: Props) {
               type="costs"
               period={{ dateFrom: filters.dateFrom, dateTo: filters.dateTo }}
               analytics={analytics as unknown as Record<string, unknown>}
+            />
+          )}
+          {filters && (
+            <BudgetGoalsCard
+              key={`budget-${filters.dateFrom}-${filters.dateTo}`}
+              period={{ dateFrom: filters.dateFrom, dateTo: filters.dateTo }}
+              summary={analytics.summary}
+              byArea={analytics.byArea}
+              byMonth={analytics.byMonth}
             />
           )}
         </>
