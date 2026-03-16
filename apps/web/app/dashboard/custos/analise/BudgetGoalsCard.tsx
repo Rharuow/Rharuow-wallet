@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { Button } from "rharuow-ds";
 import { PremiumGate } from "@/components/PremiumGate";
 
 interface ByArea  { areaId: string; areaName: string; total: number }
@@ -85,13 +86,9 @@ export function BudgetGoalsCard({ period, summary, byArea, byMonth }: Props) {
           </div>
         </div>
 
-        <button
-          onClick={handleSuggest}
-          disabled={loading || byArea.length === 0}
-          className="shrink-0 rounded-lg bg-[var(--primary)] px-4 py-2 text-xs font-semibold text-white transition-opacity disabled:opacity-60"
-        >
+        <Button size="xs" onClick={handleSuggest} disabled={loading || byArea.length === 0}>
           {loading ? "Gerando…" : suggestions ? "Rever metas" : "Sugerir metas"}
-        </button>
+        </Button>
       </div>
 
       {byArea.length === 0 && !loading && (
