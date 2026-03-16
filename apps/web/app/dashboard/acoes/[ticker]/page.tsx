@@ -3,6 +3,7 @@ import Link from "next/link";
 import { getAuthToken } from "@/lib/auth";
 import { formatBRL, formatCompact } from "@/lib/format";
 import { Metric } from "@/components/Metric";
+import { StockAnalysisCard } from "./StockAnalysisCard";
 
 type SummaryProfile = {
   sector: string | null;
@@ -522,6 +523,9 @@ export default async function StockDetailPage({ params }: PageProps) {
           </div>
         </SectionCard>
       )}
+
+      {/* Análise com IA */}
+      <StockAnalysisCard ticker={stock.symbol} />
     </div>
   );
 }

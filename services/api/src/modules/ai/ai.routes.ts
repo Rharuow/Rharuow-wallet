@@ -1,7 +1,7 @@
 import { FastifyInstance, FastifyReply } from 'fastify'
 import { z } from 'zod'
 import { authenticate } from '../../plugins/authenticate'
-import { generateInsights, userIsPremium } from './ai.service'
+import { generateInsights, userIsPremium, analyzeStock, analyzeFii } from './ai.service'
 
 function handleServiceError(err: unknown, reply: FastifyReply) {
   const e = err as Error & { statusCode?: number }
@@ -46,6 +46,64 @@ export async function aiRoutes(fastify: FastifyInstance) {
       })
 
       return reply.send({ insights })
+    } catch (err) {
+      return handleServiceError(err, reply)
+    }
+  })
+
+  // POST /v1/ai/stock-analysis — analisa ativo (Stock) com IA
+  const StockAnalysisBodySchema = z.object({
+    ticker: z.string().min(3).max(10),
+  })
+
+  fastify.post('/stock-analysis', {
+    preHandler: authenticate,
+    schema: {
+      tags: ['AI'],
+      summary: 'Analisar ativo (Stock) com IA (Premium)',
+      security: [{ bearerAuth: [] }],
+    },
+  }, async (request, reply) => {
+    try {
+      const userId = (request.user as { sub: string }).sub
+
+      const isPremium = await userIsPremium(userId)
+      if (!isPremium) {
+        return reply.status(403).send({ error: 'Funcionalidade exclusiva para usuários Premium.' })
+      }
+
+      const { ticker } = StockAnalysisBodySchema.parse(request.body)
+      const analysis = await analyzeStock(userId, ticker)
+      return reply.send({ analysis })
+    } catch (err) {
+      return handleServiceError(err, reply)
+    }
+  })
+
+  // POST /v1/ai/fii-analysis — analisa FII com IA
+  const FiiAnalysisBodySchema = z.object({
+    papel: z.string().min(4).max(10),
+  })
+
+  fastify.post('/fii-analysis', {
+    preHandler: authenticate,
+    schema: {
+      tags: ['AI'],
+      summary: 'Analisar FII com IA (Premium)',
+      security: [{ bearerAuth: [] }],
+    },
+  }, async (request, reply) => {
+    try {
+      const userId = (request.user as { sub: string }).sub
+
+      const isPremium = await userIsPremium(userId)
+      if (!isPremium) {
+        return reply.status(403).send({ error: 'Funcionalidade exclusiva para usuários Premium.' })
+      }
+
+      const { papel } = FiiAnalysisBodySchema.parse(request.body)
+      const analysis = await analyzeFii(userId, papel)
+      return reply.send({ analysis })
     } catch (err) {
       return handleServiceError(err, reply)
     }

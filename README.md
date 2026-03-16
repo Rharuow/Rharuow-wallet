@@ -336,7 +336,7 @@ User
 
 ## Próximas Funcionalidades (IA com OpenAI)
 
-- [ ] **Análise de Ativo (Stock/FII)** — Na página de detalhe de um ativo, a IA analisa fundamentos + dados de mercado e gera uma opinião contextualizada (premium).
+- [x] **Análise de Ativo (Stock/FII)** — Na página de detalhe de um ativo, a IA analisa fundamentos + dados de mercado e gera uma opinião contextualizada (premium).
 - [ ] **Budget Goals Suggestion** — A IA sugere metas de orçamento por área de custo com base no histórico e na renda do usuário (premium).
 - [ ] **Financial Health Score** — Relatório único combinando custos + entradas + investimentos: taxa de poupança, burn rate e projeção de runway (premium).
 
