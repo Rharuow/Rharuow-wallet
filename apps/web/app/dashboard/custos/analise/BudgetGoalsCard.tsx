@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Button } from "rharuow-ds";
+import { Button, Tooltip } from "rharuow-ds";
 import { PremiumGate } from "@/components/PremiumGate";
 
 interface ByArea  { areaId: string; areaName: string; total: number }
@@ -22,6 +22,7 @@ export function BudgetGoalsCard({ period, summary, byArea, byMonth }: Props) {
   const [isPremiumError, setIsPremiumError] = useState(false);
 
   async function handleSuggest() {
+      console.log("clicked");
     setLoading(true);
     setError(null);
     setIsPremiumError(false);
@@ -31,6 +32,8 @@ export function BudgetGoalsCard({ period, summary, byArea, byMonth }: Props) {
       // Fetch income total for the same period
       const dateFrom = new Date(`${period.dateFrom}T00:00:00`).toISOString();
       const dateTo   = new Date(`${period.dateTo}T23:59:59`).toISOString();
+
+      
 
       const incomeRes = await fetch(
         `/api/incomes/analytics?dateFrom=${encodeURIComponent(dateFrom)}&dateTo=${encodeURIComponent(dateTo)}`
@@ -85,10 +88,11 @@ export function BudgetGoalsCard({ period, summary, byArea, byMonth }: Props) {
             </p>
           </div>
         </div>
-
+      <Tooltip content={byArea.length === 0 ? "Apenas quando apresentar dados por área" : "Quanto mais dados por área, melhores serão as sugestões"} position="left" disabled={byArea.length > 0 || loading}>
         <Button size="xs" onClick={handleSuggest} disabled={loading || byArea.length === 0}>
           {loading ? "Gerando…" : suggestions ? "Rever metas" : "Sugerir metas"}
         </Button>
+      </Tooltip>
       </div>
 
       {byArea.length === 0 && !loading && (
