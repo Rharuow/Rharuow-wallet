@@ -495,3 +495,134 @@ export async function suggestBudgetGoals(userId: string, input: BudgetGoalsInput
   await redis.set(cacheKey, result, { ex: CACHE_TTL_SECONDS })
   return result
 }
+
+// ─────────────────────────────────────────────────────────────────
+// Financial Health Score
+// ─────────────────────────────────────────────────────────────────
+
+export interface HealthScoreInput {
+  period: { dateFrom: string; dateTo: string }
+  costs: {
+    summary: { total: number; count: number; average: number }
+    byArea: Array<{ areaId: string; areaName: string; total: number }>
+    byMonth: Array<{ month: string; total: number }>
+  }
+  incomes: {
+    summary: { total: number; count: number; average: number }
+    byMonth: Array<{ month: string; total: number }>
+    byType: Array<{ type: string; label: string; total: number; count: number }>
+  }
+}
+
+function buildHealthScorePrompt(input: HealthScoreInput): string {
+  const brl = (v: number) =>
+    v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
+  const pct = (v: number) => `${v.toFixed(1)}%`
+
+  const periodMonths = (() => {
+    const from = new Date(input.period.dateFrom)
+    const to   = new Date(input.period.dateTo)
+    const diff = (to.getFullYear() - from.getFullYear()) * 12 + (to.getMonth() - from.getMonth()) + 1
+    return Math.max(1, diff)
+  })()
+
+  const totalIncome  = input.incomes.summary.total
+  const totalCosts   = input.costs.summary.total
+  const savingAmount = totalIncome - totalCosts
+  const savingRate   = totalIncome > 0 ? (savingAmount / totalIncome) * 100 : 0
+  const avgMonthlyCost = totalCosts / periodMonths
+  // Runway = how many months of expenses saved (saving amount over period / avg monthly cost)
+  const runwayMonths = avgMonthlyCost > 0 ? savingAmount / avgMonthlyCost : 0
+
+  const formatMonth = (ym: string) => {
+    const [year, month] = ym.split('-')
+    const names = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez']
+    return `${names[parseInt(month, 10) - 1]}/${year.slice(2)}`
+  }
+
+  const costByAreaText = input.costs.byArea.length
+    ? input.costs.byArea
+        .sort((a, b) => b.total - a.total)
+        .map((a) => `  - ${a.areaName}: ${brl(a.total)} (${totalCosts > 0 ? pct((a.total / totalCosts) * 100) : '—'} dos custos)`)
+        .join('\n')
+    : '  Sem dados por área.'
+
+  const costByMonthText = input.costs.byMonth.length
+    ? input.costs.byMonth.map((m) => `  - ${formatMonth(m.month)}: ${brl(m.total)}`).join('\n')
+    : '  Sem dados mensais.'
+
+  const incomeByMonthText = input.incomes.byMonth.length
+    ? input.incomes.byMonth.map((m) => `  - ${formatMonth(m.month)}: ${brl(m.total)}`).join('\n')
+    : '  Sem dados mensais.'
+
+  const incomeByTypeText = input.incomes.byType.length
+    ? input.incomes.byType.map((t) => `  - ${t.label}: ${brl(t.total)} (${t.count} lançamentos)`).join('\n')
+    : '  Sem dados por fonte.'
+
+  return `Você é um especialista em saúde financeira pessoal para o mercado brasileiro.
+
+Analise o perfil financeiro do usuário no período de ${input.period.dateFrom} a ${input.period.dateTo} (${periodMonths} mês(es)) e gere um relatório de saúde financeira.
+
+RESUMO GERAL:
+- Renda total: ${brl(totalIncome)}
+- Custos totais: ${brl(totalCosts)}
+- Resultado (renda - custos): ${brl(savingAmount)}
+- Taxa de poupança: ${pct(savingRate)}
+- Gasto médio mensal: ${brl(avgMonthlyCost)}
+- Runway (meses de custo poupados no período): ${runwayMonths.toFixed(1)} meses
+
+CUSTOS POR ÁREA:
+${costByAreaText}
+
+EVOLUÇÃO MENSAL DOS CUSTOS:
+${costByMonthText}
+
+RENDA POR FONTE:
+${incomeByTypeText}
+
+EVOLUÇÃO MENSAL DA RENDA:
+${incomeByMonthText}
+
+Responda EXATAMENTE neste formato:
+SCORE: X/10
+• [dimensão 1]: análise da taxa de poupança e comparação com benchmarks (20% ideal)
+• [dimensão 2]: análise do burn rate e runway — quantos meses de reserva de emergência estão sendo gerados
+• [dimensão 3]: análise da composição dos custos por área — identifique concentração ou desequilíbrio
+• [dimensão 4]: análise da estabilidade e diversificação da renda
+• [dimensão 5]: recomendação prioritária de ação concreta para melhorar a saúde financeira
+
+Regras:
+- Primeira linha OBRIGATORIAMENTE: "SCORE: X/10" — onde X é um número inteiro de 0 a 10 baseado nos seguintes critérios:
+  - Taxa de poupança ≥ 30% → +3 pontos; 20-29% → +2; 10-19% → +1; ≤ 0% → -2
+  - Runway gerado ≥ 6 meses → +3 pontos; 3-5 → +2; 1-2 → +1; ≤ 0 → -1
+  - Diversificação de renda (≥3 fontes → +1; 1-2 → 0)
+  - Concentração de custos (nenhuma área > 40% → +1; alguma > 60% → -1)
+  - Comece do 5 e ajuste pelos critérios acima; limite entre 1 e 10
+- Linhas seguintes: exatamente 5 bullets começando com "•"
+- Português do Brasil, direto ao ponto, sem jargão excessivo`
+}
+
+export async function scoreFinancialHealth(userId: string, input: HealthScoreInput): Promise<string> {
+  if (!process.env.OPENAI_API_KEY) {
+    throw Object.assign(new Error('Serviço de IA não configurado.'), { statusCode: 503 })
+  }
+
+  const cacheKey = `ai:health-score:${userId}:${input.period.dateFrom}:${input.period.dateTo}`
+  const cached = await redis.get<string>(cacheKey)
+  if (cached) return cached
+
+  await checkRateLimit(userId)
+
+  const prompt = buildHealthScorePrompt(input)
+
+  const completion = await client.chat.completions.create({
+    model: 'gpt-4o-mini',
+    messages: [{ role: 'user', content: prompt }],
+    max_tokens: 700,
+    temperature: 0.6,
+  })
+
+  const result = completion.choices[0]?.message?.content?.trim() ?? 'Não foi possível gerar o score.'
+  await redis.set(cacheKey, result, { ex: CACHE_TTL_SECONDS })
+  return result
+}

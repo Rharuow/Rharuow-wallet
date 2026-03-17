@@ -1,7 +1,7 @@
 import { FastifyInstance, FastifyReply } from 'fastify'
 import { z } from 'zod'
 import { authenticate } from '../../plugins/authenticate'
-import { generateInsights, userIsPremium, analyzeStock, analyzeFii, suggestBudgetGoals, type BudgetGoalsInput } from './ai.service'
+import { generateInsights, userIsPremium, analyzeStock, analyzeFii, suggestBudgetGoals, scoreFinancialHealth, type BudgetGoalsInput, type HealthScoreInput } from './ai.service'
 
 function handleServiceError(err: unknown, reply: FastifyReply) {
   const e = err as Error & { statusCode?: number }
@@ -137,6 +137,50 @@ export async function aiRoutes(fastify: FastifyInstance) {
       const input = BudgetGoalsBodySchema.parse(request.body) as BudgetGoalsInput
       const suggestions = await suggestBudgetGoals(userId, input)
       return reply.send({ suggestions })
+    } catch (err) {
+      return handleServiceError(err, reply)
+    }
+  })
+
+  // POST /v1/ai/financial-health — gera score de saúde financeira (Premium)
+  const CostsSummarySchema = z.object({ total: z.number(), count: z.number(), average: z.number() })
+  const ByMonthSchema = z.array(z.object({ month: z.string(), total: z.number() }))
+  const ByAreaSchema  = z.array(z.object({ areaId: z.string(), areaName: z.string(), total: z.number() }))
+  const ByTypeIncomeSchema = z.array(z.object({ type: z.string(), label: z.string(), total: z.number(), count: z.number() }))
+
+  const HealthScoreBodySchema = z.object({
+    period: z.object({ dateFrom: z.string(), dateTo: z.string() }),
+    costs: z.object({
+      summary: CostsSummarySchema,
+      byArea: ByAreaSchema,
+      byMonth: ByMonthSchema,
+    }),
+    incomes: z.object({
+      summary: CostsSummarySchema,
+      byMonth: ByMonthSchema,
+      byType: ByTypeIncomeSchema,
+    }),
+  })
+
+  fastify.post('/financial-health', {
+    preHandler: authenticate,
+    schema: {
+      tags: ['AI'],
+      summary: 'Gerar score de saúde financeira com IA (Premium)',
+      security: [{ bearerAuth: [] }],
+    },
+  }, async (request, reply) => {
+    try {
+      const userId = (request.user as { sub: string }).sub
+
+      const isPremium = await userIsPremium(userId)
+      if (!isPremium) {
+        return reply.status(403).send({ error: 'Funcionalidade exclusiva para usuários Premium.' })
+      }
+
+      const input = HealthScoreBodySchema.parse(request.body) as HealthScoreInput
+      const result = await scoreFinancialHealth(userId, input)
+      return reply.send({ result })
     } catch (err) {
       return handleServiceError(err, reply)
     }
