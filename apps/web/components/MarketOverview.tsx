@@ -10,6 +10,7 @@ import {
   Tooltip,
   ResponsiveContainer,
 } from "recharts";
+import { Chip } from "rharuow-ds";
 import type { MarketAsset } from "@/lib/market";
 import { MarketCard } from "./MarketCard";
 import { formatBRL, formatCompact } from "@/lib/format";
@@ -99,18 +100,12 @@ export function MarketOverview({ assets }: Props) {
             </div>
             <div className="flex items-center gap-1">
               {PERIODS.map((p) => (
-                <button
+                <Chip
                   key={p.key}
-                  type="button"
-                  onClick={() => setPeriod(p.key)}
-                  className={`px-2 py-0.5 rounded text-xs font-medium transition-colors ${
-                    period === p.key
-                      ? "bg-[var(--primary)] text-white"
-                      : "text-slate-400 hover:text-[var(--foreground)]"
-                  }`}
-                >
-                  {p.label}
-                </button>
+                  label={p.label}
+                  active={period === p.key}
+                  onChange={() => setPeriod(p.key)}
+                />
               ))}
               <span
                 className="ml-2 text-xs font-semibold px-2 py-0.5 rounded-md"

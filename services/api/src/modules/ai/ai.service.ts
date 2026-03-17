@@ -393,3 +393,105 @@ export async function analyzeFii(userId: string, papel: string): Promise<string>
   await redis.set(cacheKey, result, { ex: CACHE_TTL_SECONDS })
   return result
 }
+
+// ─────────────────────────────────────────────────────────────────
+// Budget Goals Suggestion
+// ─────────────────────────────────────────────────────────────────
+
+export interface BudgetGoalsInput {
+  period: { dateFrom: string; dateTo: string }
+  summary: { total: number; count: number; average: number }
+  byArea: Array<{ areaId: string; areaName: string; total: number }>
+  byMonth: Array<{ month: string; total: number }>
+  incomeTotal: number
+}
+
+function buildBudgetGoalsPrompt(input: BudgetGoalsInput): string {
+  const brl = (v: number) =>
+    v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
+
+  const periodMonths = (() => {
+    const from = new Date(input.period.dateFrom)
+    const to   = new Date(input.period.dateTo)
+    const diff = (to.getFullYear() - from.getFullYear()) * 12 + (to.getMonth() - from.getMonth()) + 1
+    return Math.max(1, diff)
+  })()
+
+  const savingMargin = input.incomeTotal > 0
+    ? `${(((input.incomeTotal - input.summary.total) / input.incomeTotal) * 100).toFixed(1)}%`
+    : '—'
+
+  const byAreaText = input.byArea.length
+    ? input.byArea
+        .sort((a, b) => b.total - a.total)
+        .map((a) => {
+          const monthly = a.total / periodMonths
+          return `  - ${a.areaName}: ${brl(a.total)} total (≈ ${brl(monthly)}/mês)`
+        })
+        .join('\n')
+    : '  Sem dados por área.'
+
+  const byMonthText = input.byMonth.length
+    ? input.byMonth
+        .map((m) => {
+          const [year, month] = m.month.split('-')
+          const names = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez']
+          return `  - ${names[parseInt(month, 10) - 1]}/${year.slice(2)}: ${brl(m.total)}`
+        })
+        .join('\n')
+    : '  Sem dados mensais.'
+
+  return `Você é um planejador financeiro pessoal especializado em finanças domésticas brasileiras.
+
+Com base nos dados abaixo, sugira metas de orçamento mensais realistas e motivadoras para cada área de custo, levando em conta a renda disponível e as tendências de gasto.
+
+PERÍODO ANALISADO: ${input.period.dateFrom} a ${input.period.dateTo} (${periodMonths} mês(es))
+
+RESUMO FINANCEIRO:
+- Renda total no período: ${brl(input.incomeTotal)}
+- Total de custos no período: ${brl(input.summary.total)}
+- Margem de poupança atual: ${savingMargin}
+- Custo médio por lançamento: ${brl(input.summary.average)}
+
+GASTOS POR ÁREA (total no período → média mensal):
+${byAreaText}
+
+EVOLUÇÃO MENSAL DOS GASTOS:
+${byMonthText}
+
+Forneça EXATAMENTE uma sugestão de meta por área de custo listada, mais UMA meta global de poupança, seguindo o formato abaixo para CADA bullet:
+• [Nome da Área]: meta R$ X/mês — [justificativa curta de 1 linha: compare com o histórico e indique se é redução, manutenção ou crescimento controlado]
+
+Último bullet obrigatório:
+• Meta de Poupança: R$ X/mês ([Y]% da renda) — [justificativa curta]
+
+Regras:
+- Seja realista: não sugira cortes impossíveis
+- Use os dados históricos como referência principal
+- Responda APENAS com os bullets, sem introdução nem conclusão`
+}
+
+export async function suggestBudgetGoals(userId: string, input: BudgetGoalsInput): Promise<string> {
+  if (!process.env.OPENAI_API_KEY) {
+    throw Object.assign(new Error('Serviço de IA não configurado.'), { statusCode: 503 })
+  }
+
+  const cacheKey = `ai:budget-goals:${userId}:${input.period.dateFrom}:${input.period.dateTo}`
+  const cached = await redis.get<string>(cacheKey)
+  if (cached) return cached
+
+  await checkRateLimit(userId)
+
+  const prompt = buildBudgetGoalsPrompt(input)
+
+  const completion = await client.chat.completions.create({
+    model: 'gpt-4o-mini',
+    messages: [{ role: 'user', content: prompt }],
+    max_tokens: 600,
+    temperature: 0.7,
+  })
+
+  const result = completion.choices[0]?.message?.content?.trim() ?? 'Não foi possível gerar as sugestões.'
+  await redis.set(cacheKey, result, { ex: CACHE_TTL_SECONDS })
+  return result
+}

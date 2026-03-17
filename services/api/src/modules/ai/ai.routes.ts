@@ -1,7 +1,7 @@
 import { FastifyInstance, FastifyReply } from 'fastify'
 import { z } from 'zod'
 import { authenticate } from '../../plugins/authenticate'
-import { generateInsights, userIsPremium, analyzeStock, analyzeFii } from './ai.service'
+import { generateInsights, userIsPremium, analyzeStock, analyzeFii, suggestBudgetGoals, type BudgetGoalsInput } from './ai.service'
 
 function handleServiceError(err: unknown, reply: FastifyReply) {
   const e = err as Error & { statusCode?: number }
@@ -104,6 +104,39 @@ export async function aiRoutes(fastify: FastifyInstance) {
       const { papel } = FiiAnalysisBodySchema.parse(request.body)
       const analysis = await analyzeFii(userId, papel)
       return reply.send({ analysis })
+    } catch (err) {
+      return handleServiceError(err, reply)
+    }
+  })
+
+  // POST /v1/ai/budget-goals — sugere metas de orçamento por área (Premium)
+  const BudgetGoalsBodySchema = z.object({
+    period: z.object({ dateFrom: z.string(), dateTo: z.string() }),
+    summary: z.object({ total: z.number(), count: z.number(), average: z.number() }),
+    byArea: z.array(z.object({ areaId: z.string(), areaName: z.string(), total: z.number() })),
+    byMonth: z.array(z.object({ month: z.string(), total: z.number() })),
+    incomeTotal: z.number(),
+  })
+
+  fastify.post('/budget-goals', {
+    preHandler: authenticate,
+    schema: {
+      tags: ['AI'],
+      summary: 'Sugerir metas de orçamento por área com IA (Premium)',
+      security: [{ bearerAuth: [] }],
+    },
+  }, async (request, reply) => {
+    try {
+      const userId = (request.user as { sub: string }).sub
+
+      const isPremium = await userIsPremium(userId)
+      if (!isPremium) {
+        return reply.status(403).send({ error: 'Funcionalidade exclusiva para usuários Premium.' })
+      }
+
+      const input = BudgetGoalsBodySchema.parse(request.body) as BudgetGoalsInput
+      const suggestions = await suggestBudgetGoals(userId, input)
+      return reply.send({ suggestions })
     } catch (err) {
       return handleServiceError(err, reply)
     }

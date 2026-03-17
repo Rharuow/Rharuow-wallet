@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Card } from "rharuow-ds";
+import { Button, Card } from "rharuow-ds";
 
 interface InsightsCardProps {
   type: "costs" | "incomes";
@@ -58,13 +58,9 @@ export function InsightsCard({ type, period, analytics, costTotal }: InsightsCar
           </div>
         </div>
 
-        <button
-          onClick={handleGenerate}
-          disabled={loading}
-          className="shrink-0 rounded-lg bg-[var(--primary)] px-4 py-2 text-xs font-semibold text-white transition-opacity disabled:opacity-60"
-        >
+        <Button size="xs" onClick={handleGenerate} disabled={loading}>
           {loading ? "Gerando…" : insights ? "Atualizar" : "Gerar insights"}
-        </button>
+        </Button>
       </div>
 
       {loading && (

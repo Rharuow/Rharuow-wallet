@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { Button } from "rharuow-ds";
 import { PremiumGate } from "@/components/PremiumGate";
 
 interface Props {
@@ -67,13 +68,9 @@ export function StockAnalysisCard({ ticker }: Props) {
           </div>
         </div>
 
-        <button
-          onClick={handleAnalyze}
-          disabled={loading}
-          className="shrink-0 rounded-lg bg-[var(--primary)] px-4 py-2 text-xs font-semibold text-white transition-opacity disabled:opacity-60"
-        >
+        <Button size="xs" onClick={handleAnalyze} disabled={loading}>
           {loading ? "Analisando…" : analysis ? "Reanalisar" : "Analisar com IA"}
-        </button>
+        </Button>
       </div>
 
       {loading && (
