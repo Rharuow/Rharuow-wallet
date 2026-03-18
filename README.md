@@ -86,6 +86,7 @@ Checklist imediato para implementação (MVP)
 - [x] Criar `services/api` com endpoints de auth/users (Prisma + migrations).
 - [x] Configurar integração B3 (adapter) e job básico de ingestão.
 - [x] Configurar deploy no Vercel (frontend) e Fly.io (backend).
+- [ ] **Fluxo de recuperação de senha por e-mail** — endpoint `POST /v1/auth/forgot-password` gera token com TTL e envia e-mail; endpoint `POST /v1/auth/reset-password` valida o token e atualiza a senha; páginas `/forgot-password` e `/reset-password` no frontend.
 
 ---
 
@@ -339,5 +340,5 @@ User
 - [x] **Análise de Ativo (Stock/FII)** — Na página de detalhe de um ativo, a IA analisa fundamentos + dados de mercado e gera uma opinião contextualizada (premium).
 - [x] **Budget Goals Suggestion** — A IA sugere metas de orçamento por área de custo com base no histórico e na renda do usuário (premium).
 - [x] **Financial Health Score** — Relatório único combinando custos + entradas + investimentos: taxa de poupança, burn rate e projeção de runway (premium).
-- [ ] **Sugestão de Área e Descrição de Custo** — Ao registrar um custo, o usuário digita o tipo e a IA sugere automaticamente a melhor área e uma descrição padronizada com base no histórico e nas categorias existentes (premium).
+- [x] **Sugestão de Área e Descrição de Custo** — Ao registrar um custo, o usuário digita o tipo e a IA sugere automaticamente a melhor área e uma descrição padronizada com base no histórico e nas categorias existentes (premium).
 

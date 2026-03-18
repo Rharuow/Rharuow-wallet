@@ -1,4 +1,4 @@
-import { getAuthToken } from "@/lib/auth";
+import { getAuthToken, getPlan } from "@/lib/auth";
 import { CostsTable, Cost, CostType, CostRecurrence } from "./CostsTable";
 import { CostArea } from "./areas/AreasTable";
 
@@ -65,11 +65,12 @@ export default async function CustoPage({
   const { page: pageParam } = await searchParams;
   const page = Math.max(1, parseInt(pageParam ?? "1", 10) || 1);
   const token = await getAuthToken();
-  const [{ costs, total }, types, areas, recurrences] = await Promise.all([
+  const [{ costs, total }, types, areas, recurrences, plan] = await Promise.all([
     fetchCosts(token, page),
     fetchTypes(token),
     fetchAreas(token),
     fetchRecurrences(token),
+    token ? getPlan(token) : Promise.resolve<"FREE" | "PREMIUM">("FREE"),
   ]);
 
   const totalPages = Math.max(1, Math.ceil(total / PAGE_LIMIT));
@@ -89,6 +90,7 @@ export default async function CustoPage({
         recurrences={recurrences}
         currentPage={page}
         totalPages={totalPages}
+        isPremium={plan === "PREMIUM"}
       />
     </div>
   );

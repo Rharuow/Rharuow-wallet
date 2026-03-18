@@ -1,7 +1,7 @@
 import { FastifyInstance, FastifyReply } from 'fastify'
 import { z } from 'zod'
 import { authenticate } from '../../plugins/authenticate'
-import { generateInsights, userIsPremium, analyzeStock, analyzeFii, suggestBudgetGoals, scoreFinancialHealth, type BudgetGoalsInput, type HealthScoreInput } from './ai.service'
+import { generateInsights, userIsPremium, analyzeStock, analyzeFii, suggestBudgetGoals, scoreFinancialHealth, suggestCostAreaAndDescription, type BudgetGoalsInput, type HealthScoreInput, type CostSuggestionInput } from './ai.service'
 
 function handleServiceError(err: unknown, reply: FastifyReply) {
   const e = err as Error & { statusCode?: number }
@@ -181,6 +181,37 @@ export async function aiRoutes(fastify: FastifyInstance) {
       const input = HealthScoreBodySchema.parse(request.body) as HealthScoreInput
       const result = await scoreFinancialHealth(userId, input)
       return reply.send({ result })
+    } catch (err) {
+      return handleServiceError(err, reply)
+    }
+  })
+
+  // POST /v1/ai/cost-suggestion — categoriza custo por texto livre e sugere área/tipo/descrição (Premium)
+  const CostSuggestionBodySchema = z.object({
+    input: z.string().min(2).max(300),
+    areas: z.array(z.object({ id: z.string(), name: z.string() })).min(1).max(50),
+    types: z.array(z.object({ id: z.string(), name: z.string(), areaId: z.string() })).max(200).default([]),
+  })
+
+  fastify.post('/cost-suggestion', {
+    preHandler: authenticate,
+    schema: {
+      tags: ['AI'],
+      summary: 'Sugerir área e descrição de custo com IA (Premium)',
+      security: [{ bearerAuth: [] }],
+    },
+  }, async (request, reply) => {
+    try {
+      const userId = (request.user as { sub: string }).sub
+
+      const isPremium = await userIsPremium(userId)
+      if (!isPremium) {
+        return reply.status(403).send({ error: 'Funcionalidade exclusiva para usuários Premium.' })
+      }
+
+      const input = CostSuggestionBodySchema.parse(request.body) as CostSuggestionInput
+      const suggestion = await suggestCostAreaAndDescription(userId, input)
+      return reply.send({ suggestion })
     } catch (err) {
       return handleServiceError(err, reply)
     }
