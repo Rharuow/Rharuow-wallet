@@ -86,6 +86,7 @@ Checklist imediato para implementação (MVP)
 - [x] Criar `services/api` com endpoints de auth/users (Prisma + migrations).
 - [x] Configurar integração B3 (adapter) e job básico de ingestão.
 - [x] Configurar deploy no Vercel (frontend) e Fly.io (backend).
+- [ ] **Fluxo de recuperação de senha por e-mail** — endpoint `POST /v1/auth/forgot-password` gera token com TTL e envia e-mail; endpoint `POST /v1/auth/reset-password` valida o token e atualiza a senha; páginas `/forgot-password` e `/reset-password` no frontend.
 
 ---
 
