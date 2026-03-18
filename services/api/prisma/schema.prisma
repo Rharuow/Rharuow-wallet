@@ -61,6 +61,7 @@ model User {
   incomes                Income[]
   incomeRecurrences      IncomeRecurrence[]
   emailTokens            EmailVerifyToken[]
+  passwordResetTokens    PasswordResetToken[]
 
   @@map("users")
 }
@@ -77,6 +78,20 @@ model EmailVerifyToken {
 
   @@index([token])
   @@map("email_verify_tokens")
+}
+
+// ---- Token de redefinição de senha ----
+model PasswordResetToken {
+  id        String    @id @default(cuid())
+  userId    String    @map("user_id")
+  token     String    @unique
+  expiresAt DateTime  @map("expires_at")
+  usedAt    DateTime? @map("used_at")
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime  @default(now()) @map("created_at")
+
+  @@index([token])
+  @@map("password_reset_tokens")
 }
 
 // ---- Conta do usuário na corretora ----

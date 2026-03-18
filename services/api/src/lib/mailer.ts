@@ -57,3 +57,37 @@ export async function sendVerificationEmail(email: string, token: string) {
     await sendViaSmtp(email, subject, html)
   }
 }
+
+function buildPasswordResetHtml(link: string) {
+  return `
+    <div style="font-family:sans-serif;max-width:480px;margin:auto">
+      <h2>Redefinir senha — RharouWallet</h2>
+      <p>Recebemos uma solicitação para redefinir a senha da sua conta. Clique no botão abaixo:</p>
+      <p style="text-align:center;margin:32px 0">
+        <a href="${link}"
+           style="background:#6366f1;color:#fff;padding:12px 28px;border-radius:6px;text-decoration:none;font-weight:600">
+          Redefinir senha
+        </a>
+      </p>
+      <p style="font-size:12px;color:#888">
+        O link expira em 1 hora. Se você não solicitou, ignore este e-mail — sua senha não será alterada.
+      </p>
+      <p style="font-size:12px;color:#888">
+        Ou copie e cole no navegador:<br/>
+        <a href="${link}">${link}</a>
+      </p>
+    </div>
+  `
+}
+
+export async function sendPasswordResetEmail(email: string, token: string) {
+  const link = `${APP_URL}/reset-password?token=${token}`
+  const subject = 'Redefinição de senha — RharouWallet'
+  const html = buildPasswordResetHtml(link)
+
+  if (process.env.RESEND_API_KEY) {
+    await sendViaResend(email, subject, html)
+  } else {
+    await sendViaSmtp(email, subject, html)
+  }
+}

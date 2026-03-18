@@ -1,6 +1,6 @@
 import { FastifyInstance } from 'fastify'
-import { loginSchema, registerSchema } from './auth.schema'
-import { loginUser, registerUser, verifyEmail } from './auth.service'
+import { loginSchema, registerSchema, forgotPasswordSchema, resetPasswordSchema } from './auth.schema'
+import { loginUser, registerUser, verifyEmail, forgotPassword, resetPassword } from './auth.service'
 
 export async function authRoutes(fastify: FastifyInstance) {
   /**
@@ -152,6 +152,77 @@ export async function authRoutes(fastify: FastifyInstance) {
       const { token } = request.query as { token: string }
       await verifyEmail(token)
       return reply.send({ message: 'E-mail confirmado. Você já pode fazer login.' })
+    },
+  )
+
+  /**
+   * POST /v1/auth/forgot-password
+   * Envia e-mail de redefinição de senha.
+   */
+  fastify.post(
+    '/forgot-password',
+    {
+      schema: {
+        tags: ['Auth'],
+        summary: 'Solicitar redefinição de senha',
+        body: {
+          type: 'object',
+          required: ['email'],
+          properties: {
+            email: { type: 'string', format: 'email' },
+          },
+        },
+        response: {
+          200: {
+            type: 'object',
+            properties: { message: { type: 'string' } },
+          },
+        },
+      },
+    },
+    async (request, reply) => {
+      const body = forgotPasswordSchema.parse(request.body)
+      await forgotPassword(body)
+      // Always return 200 to avoid e-mail enumeration
+      return reply.send({ message: 'Se este e-mail estiver cadastrado, você receberá as instruções em breve.' })
+    },
+  )
+
+  /**
+   * POST /v1/auth/reset-password
+   * Redefine a senha a partir do token recebido por e-mail.
+   */
+  fastify.post(
+    '/reset-password',
+    {
+      schema: {
+        tags: ['Auth'],
+        summary: 'Redefinir senha',
+        body: {
+          type: 'object',
+          required: ['token', 'password'],
+          properties: {
+            token: { type: 'string' },
+            password: { type: 'string', minLength: 8 },
+          },
+        },
+        response: {
+          200: {
+            type: 'object',
+            properties: { message: { type: 'string' } },
+          },
+        },
+      },
+    },
+    async (request, reply) => {
+      try {
+        const body = resetPasswordSchema.parse(request.body)
+        await resetPassword(body)
+        return reply.send({ message: 'Senha redefinida com sucesso. Você já pode fazer login.' })
+      } catch (err) {
+        const e = err as Error & { statusCode?: number }
+        return reply.status(e.statusCode ?? 500).send({ error: e.message })
+      }
     },
   )
 }
