@@ -1,8 +1,8 @@
 import bcrypt from 'bcryptjs'
 import crypto from 'node:crypto'
 import { prisma } from '../../lib/prisma'
-import { sendVerificationEmail } from '../../lib/mailer'
-import type { LoginInput, RegisterInput } from './auth.schema'
+import { sendVerificationEmail, sendPasswordResetEmail } from '../../lib/mailer'
+import type { LoginInput, RegisterInput, ForgotPasswordInput, ResetPasswordInput } from './auth.schema'
 
 export async function registerUser(input: RegisterInput) {
   const existing = await prisma.user.findUnique({
@@ -140,4 +140,54 @@ export async function loginUser(input: LoginInput) {
     role: user.role,
     roleId: user.roleId,
   }
+}
+
+export async function forgotPassword(input: ForgotPasswordInput) {
+  // Always respond with success to avoid e-mail enumeration
+  const user = await prisma.user.findUnique({ where: { email: input.email } })
+  if (!user) return
+
+  // Invalidate any existing unused tokens for this user
+  await prisma.passwordResetToken.updateMany({
+    where: { userId: user.id, usedAt: null },
+    data: { usedAt: new Date() },
+  })
+
+  const token = crypto.randomBytes(32).toString('hex')
+  const expiresAt = new Date(Date.now() + 60 * 60 * 1000) // 1 hora
+
+  await prisma.passwordResetToken.create({
+    data: { userId: user.id, token, expiresAt },
+  })
+
+  await sendPasswordResetEmail(user.email, token)
+}
+
+export async function resetPassword(input: ResetPasswordInput) {
+  const record = await prisma.passwordResetToken.findUnique({ where: { token: input.token } })
+
+  if (!record || record.usedAt) {
+    const error = new Error('Token inválido ou já utilizado') as Error & { statusCode: number }
+    error.statusCode = 400
+    throw error
+  }
+
+  if (record.expiresAt < new Date()) {
+    const error = new Error('Token expirado. Solicite uma nova redefinição de senha.') as Error & { statusCode: number }
+    error.statusCode = 410
+    throw error
+  }
+
+  const passwordHash = await bcrypt.hash(input.password, 12)
+
+  await prisma.$transaction([
+    prisma.user.update({
+      where: { id: record.userId },
+      data: { passwordHash },
+    }),
+    prisma.passwordResetToken.update({
+      where: { id: record.id },
+      data: { usedAt: new Date() },
+    }),
+  ])
 }

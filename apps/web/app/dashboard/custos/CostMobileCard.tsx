@@ -139,12 +139,12 @@ export function CostMobileCard({ cost, localAreas, localTypes, edit, lists, onDe
           <span className="text-base font-semibold text-[var(--foreground)]">
             {formatBRL(Number(cost.amount))}
           </span>
-          <span className="text-sm text-slate-600">
+          <span className="text-sm">
             {cost.costType.name}
             {(area?.name ?? costType?.area?.name) ? (
-              <span className="ml-1 text-slate-400">
+              <strong className="ml-1">
                 · {area?.name ?? costType?.area?.name}
-              </span>
+              </strong>
             ) : null}
           </span>
           {cost.description && (

@@ -91,7 +91,7 @@ export function LoginForm() {
             <div className="flex justify-end">
               <a
                 href="/forgot-password"
-                className="text-xs text-[var(--primary)] hover:underline"
+                className="text-xs hover:underline"
               >
                 Esqueceu a senha?
               </a>
