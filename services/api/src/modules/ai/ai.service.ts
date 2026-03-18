@@ -626,3 +626,122 @@ export async function scoreFinancialHealth(userId: string, input: HealthScoreInp
   await redis.set(cacheKey, result, { ex: CACHE_TTL_SECONDS })
   return result
 }
+
+// ─────────────────────────────────────────────────────────────────
+// Cost Area & Description Suggestion
+// ─────────────────────────────────────────────────────────────────
+
+export interface CostSuggestionInput {
+  input: string
+  areas: Array<{ id: string; name: string }>
+  types: Array<{ id: string; name: string; areaId: string }>
+}
+
+export interface CostSuggestionResult {
+  amount: number
+  areaId: string
+  areaName: string
+  costTypeId: string | null
+  costTypeName: string
+  description: string
+}
+
+function buildCostSuggestionPrompt(input: CostSuggestionInput): string {
+  const areasList = input.areas
+    .map((a) => `  {"id":"${a.id}","name":"${a.name}"}`)
+    .join('\n')
+
+  const typesList = input.types.length
+    ? input.types
+        .map((t) => `  {"id":"${t.id}","name":"${t.name}","areaId":"${t.areaId}"}`)
+        .join('\n')
+    : '  (nenhum tipo cadastrado ainda)'
+
+  return `Você é um assistente de categorização de gastos domésticos para o mercado brasileiro.
+
+O usuário registrou o seguinte gasto:
+"${input.input}"
+
+ÁREAS DISPONÍVEIS:
+${areasList}
+
+TIPOS DE CUSTO DO USUÁRIO (vinculados às áreas acima):
+${typesList}
+
+Sua tarefa:
+1. Extraia o valor monetário do texto. Aceite formatos como: 250, 49.90, 1500,00, R$ 250, R$1.500,00. Use ponto como separador decimal no resultado numérico.
+2. Identifique a área mais adequada da lista.
+3. Se já existir um tipo de custo compatível, use seu "id" em costTypeId. Se não houver correspondência adequada, defina costTypeId como null e sugira um novo nome em costTypeName.
+4. Gere uma descrição objetiva e padronizada em português do Brasil (máximo 60 caracteres).
+
+Responda EXCLUSIVAMENTE em JSON válido, sem blocos de código, sem texto extra:
+{"amount":0.00,"areaId":"","areaName":"","costTypeId":null,"costTypeName":"","description":""}`
+}
+
+export async function suggestCostAreaAndDescription(
+  userId: string,
+  input: CostSuggestionInput,
+): Promise<CostSuggestionResult> {
+  if (!process.env.OPENAI_API_KEY) {
+    throw Object.assign(new Error('Serviço de IA não configurado.'), { statusCode: 503 })
+  }
+
+  await checkRateLimit(userId)
+
+  const prompt = buildCostSuggestionPrompt(input)
+
+  const completion = await client.chat.completions.create({
+    model: 'gpt-4o-mini',
+    messages: [{ role: 'user', content: prompt }],
+    max_tokens: 150,
+    temperature: 0.2,
+    response_format: { type: 'json_object' },
+  })
+
+  const raw = completion.choices[0]?.message?.content?.trim() ?? '{}'
+
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(raw)
+  } catch {
+    throw Object.assign(new Error('Resposta inválida da IA.'), { statusCode: 502 })
+  }
+
+  const { amount, areaId, areaName, costTypeId, costTypeName, description } =
+    parsed as Record<string, unknown>
+
+  if (
+    typeof amount !== 'number' ||
+    typeof areaId !== 'string' ||
+    typeof areaName !== 'string' ||
+    typeof costTypeName !== 'string' ||
+    typeof description !== 'string'
+  ) {
+    throw Object.assign(new Error('Não foi possível gerar a sugestão.'), { statusCode: 502 })
+  }
+
+  if (amount <= 0 || !isFinite(amount)) {
+    throw Object.assign(new Error('Não foi possível extrair um valor válido do texto.'), { statusCode: 422 })
+  }
+
+  // Validate areaId belongs to the provided list
+  const validArea = input.areas.find((a) => a.id === areaId)
+  if (!validArea) {
+    throw Object.assign(new Error('Área sugerida inválida.'), { statusCode: 502 })
+  }
+
+  // Validate costTypeId if present
+  const resolvedTypeId: string | null =
+    typeof costTypeId === 'string' && input.types.some((t) => t.id === costTypeId)
+      ? costTypeId
+      : null
+
+  return {
+    amount: Math.round(amount * 100) / 100,
+    areaId: validArea.id,
+    areaName: validArea.name,
+    costTypeId: resolvedTypeId,
+    costTypeName: costTypeName.slice(0, 80),
+    description: description.slice(0, 120),
+  }
+}

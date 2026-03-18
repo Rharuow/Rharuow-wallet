@@ -23,9 +23,10 @@ interface Props {
   recurrences: CostRecurrence[];
   currentPage: number;
   totalPages: number;
+  isPremium?: boolean;
 }
 
-export function CostsTable({ costs, types, areas, recurrences, currentPage, totalPages }: Props) {
+export function CostsTable({ costs, types, areas, recurrences, currentPage, totalPages, isPremium = false }: Props) {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -43,7 +44,7 @@ export function CostsTable({ costs, types, areas, recurrences, currentPage, tota
 
   return (
     <>
-      <CostCreateCard areas={areas} types={types} />
+      <CostCreateCard areas={areas} types={types} isPremium={isPremium} />
 
       {/* ── Mobile: cards ── */}
       <div className="flex flex-col gap-3 md:hidden">
