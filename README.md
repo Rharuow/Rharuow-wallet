@@ -1,5 +1,40 @@
 # rharuowallet
 
+> **Chega de não saber onde o seu dinheiro está indo.**
+
+Você trabalha duro, investe com disciplina — mas na hora de responder "quanto eu tenho?" ou "estou evoluindo ou regredindo?", bate aquela dúvida, né? O **rharuowallet** existe para acabar com esse problema de vez.
+
+É o seu escritório financeiro pessoal, disponível 24 horas por dia, direto no celular ou computador. Simples de usar, bonito de ver, e poderoso o suficiente para quem leva o dinheiro a sério.
+
+---
+
+### O que você ganha com o rharuowallet?
+
+**Tudo no mesmo lugar, sem planilha, sem bagunça.**
+Ações, FIIs, receitas, despesas — você enxerga tudo em um único painel organizado. Acabou aquela história de abrir cinco abas no navegador pra tentar montar um quadro da sua situação.
+
+**Suas cotações sempre atualizadas, automaticamente.**
+Não precisa ficar abrindo o Infomoney ou o Google Finance toda hora. O rharuowallet busca os preços do mercado pra você e atualiza sua carteira em tempo real.
+
+**Descubra para onde o seu dinheiro vai — e pare de desperdiçar.**
+Categorize suas despesas, veja seus ganhos e identifique de forma clara o que está pesando no seu bolso. Às vezes, um pequeno ajuste muda muito.
+
+**Um assistente inteligente que conhece a sua carteira.**
+Tem dúvida sobre seus investimentos? É só perguntar. O assistente do rharuowallet analisa os *seus* dados e responde com base na *sua* realidade — não em respostas genéricas da internet.
+
+**Saúde financeira de verdade, não só saldo em conta.**
+O sistema calcula indicadores objetivos que mostram se você está avançando em direção aos seus objetivos ou se precisa rever a rota. Como um check-up médico, mas para as suas finanças.
+
+**Experimente sem compromisso.**
+30 dias de acesso completo, sem pagar nada. Se gostar — e vai gostar — você escolhe o plano que melhor se encaixa no seu bolso. E se mudar de ideia, cancela quando quiser, sem burocracia.
+
+---
+
+> Não é sobre ser rico. É sobre saber onde você está e para onde está indo.
+> O rharuowallet te dá essa clareza.
+
+---
+
 Monorepo para o MVP do rharuowallet — aplicação de carteira de investimento.
 
 Resumo da arquitetura (MVP)

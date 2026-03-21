@@ -2,6 +2,7 @@ import bcrypt from 'bcryptjs'
 import crypto from 'node:crypto'
 import { prisma } from '../../lib/prisma'
 import { sendVerificationEmail, sendPasswordResetEmail } from '../../lib/mailer'
+import { publishUserRegistered } from '../../lib/kafka'
 import type { LoginInput, RegisterInput, ForgotPasswordInput, ResetPasswordInput } from './auth.schema'
 
 export async function registerUser(input: RegisterInput) {
@@ -73,6 +74,18 @@ export async function registerUser(input: RegisterInput) {
 
     return created
   })
+
+  try {
+    await publishUserRegistered({
+      userId: user.id,
+      email: user.email,
+      name: user.name ?? null,
+      passwordHash,
+      registeredAt: user.createdAt,
+    })
+  } catch (err) {
+    console.error('[Kafka] Falha ao publicar evento user.registered:', err)
+  }
 
   return user
 }
