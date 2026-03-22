@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useCallback, useEffect } from "react";
+import { FormProvider, useForm } from "react-hook-form";
 import {
   BarChart,
   Bar,
@@ -14,7 +15,7 @@ import {
   Cell,
   Legend,
 } from "recharts";
-import { Card, Tooltip } from "rharuow-ds";
+import { Button, Card, Input, Tooltip } from "rharuow-ds";
 import { formatBRL } from "../types";
 import { InsightsCard } from "../../../../components/InsightsCard";
 
@@ -123,12 +124,14 @@ function PeriodFilter({
 }: {
   onChange: (f: Filters) => void;
 }) {
-  const [dateFrom, setDateFrom] = useState(DEFAULT_DATES.dateFrom);
-  const [dateTo, setDateTo] = useState(DEFAULT_DATES.dateTo);
+  const methods = useForm<Filters>({
+    defaultValues: DEFAULT_DATES,
+  });
+  const { register, setValue } = methods;
 
   function applyPreset(from: string, to: string) {
-    setDateFrom(from);
-    setDateTo(to);
+    setValue("dateFrom", from);
+    setValue("dateTo", to);
     onChange({ dateFrom: from, dateTo: to });
   }
 
@@ -154,50 +157,38 @@ function PeriodFilter({
   }
 
   return (
-    <div className="flex flex-wrap gap-3 items-end">
-      <div className="flex flex-col gap-1">
-        <label className="text-xs text-slate-500">De</label>
-        <input
+    <FormProvider {...methods}>
+      <form
+        className="flex flex-wrap gap-3 items-end"
+        onSubmit={methods.handleSubmit((data) => onChange(data))}
+        noValidate
+      >
+        <Input
+          label="De"
           type="date"
-          className="rounded border border-slate-300 px-2 py-1 text-sm"
-          value={dateFrom}
-          onChange={(e) => setDateFrom(e.target.value)}
+          {...register("dateFrom", { required: true })}
         />
-      </div>
-      <div className="flex flex-col gap-1">
-        <label className="text-xs text-slate-500">Até</label>
-        <input
+        <Input
+          label="Até"
           type="date"
-          className="rounded border border-slate-300 px-2 py-1 text-sm"
-          value={dateTo}
-          onChange={(e) => setDateTo(e.target.value)}
+          {...register("dateTo", { required: true })}
         />
+        <Button type="submit">
+          Aplicar
+        </Button>
+      </form>
+      <div className="flex flex-wrap gap-3">
+        <Button variant="outline" onClick={thisMonth}>
+          Este mês
+        </Button>
+        <Button variant="outline" onClick={last3Months}>
+          Últimos 3 meses
+        </Button>
+        <Button variant="outline" onClick={thisYear}>
+          Este ano
+        </Button>
       </div>
-      <button
-        className="rounded bg-[var(--primary)] px-3 py-1.5 text-xs font-medium text-white"
-        onClick={() => onChange({ dateFrom, dateTo })}
-      >
-        Aplicar
-      </button>
-      <button
-        className="rounded border border-slate-300 px-3 py-1.5 text-xs font-medium text-slate-600"
-        onClick={thisMonth}
-      >
-        Este mês
-      </button>
-      <button
-        className="rounded border border-slate-300 px-3 py-1.5 text-xs font-medium text-slate-600"
-        onClick={last3Months}
-      >
-        Últimos 3 meses
-      </button>
-      <button
-        className="rounded border border-slate-300 px-3 py-1.5 text-xs font-medium text-slate-600"
-        onClick={thisYear}
-      >
-        Este ano
-      </button>
-    </div>
+    </FormProvider>
   );
 }
 

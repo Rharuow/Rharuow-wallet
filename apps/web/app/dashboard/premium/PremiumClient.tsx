@@ -39,10 +39,12 @@ const PLANS: Plan[] = [
 ];
 
 const FEATURES: { icon: string; text: string }[] = [
-  { icon: "📈", text: "Cotações ilimitadas de ações e FIIs" },
-  { icon: "💰", text: "Gestão completa de custos domésticos" },
-  { icon: "📊", text: "Análise e gráficos de carteira" },
-  { icon: "⚡", text: "Suporte por e-mail prioritário" },
+  { icon: "📈", text: "Cotações em tempo real de ações e FIIs da B3" },
+  { icon: "🤖", text: "Insights financeiros gerados por IA com base nos seus dados" },
+  { icon: "💸", text: "Controle completo de custos e receitas com análise mensal" },
+  { icon: "🩺", text: "Diagnóstico de saúde financeira com indicadores objetivos" },
+  { icon: "📊", text: "Gráficos de evolução, distribuição e saldo líquido do período" },
+  { icon: "🔄", text: "Gestão de lançamentos recorrentes e avulsos" },
 ];
 
 type Props = {
