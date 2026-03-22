@@ -10,7 +10,9 @@ export default async function DashboardLayout({
   const user = await getAuthUser();
 
   if (!user) {
-    redirect("/login");
+    // Redireciona via logout para garantir que o cookie seja limpo antes
+    // de voltar ao login — evita loop infinito quando o token é inválido.
+    redirect("/api/auth/logout");
   }
 
   return <DashboardShell>{children}</DashboardShell>;

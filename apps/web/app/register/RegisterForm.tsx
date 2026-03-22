@@ -119,6 +119,7 @@ export function RegisterForm() {
               })}
             />
 
+            <div className="flex flex-col gap-1">
             <Input
               label="Senha"
               type="password"
@@ -134,6 +135,11 @@ export function RegisterForm() {
                 },
               })}
             />
+            <p className="text-xs text-slate-400">
+              A senha deve ter pelo menos <strong>8 caracteres</strong>, incluir{" "}
+              <strong>uma letra maiúscula</strong> e <strong>um número</strong>.
+            </p>
+            </div>
 
             <Input
               label="Confirmar senha"
