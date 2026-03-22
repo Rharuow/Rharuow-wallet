@@ -20,7 +20,7 @@
 
 [data-theme="dark"] {
   --background: #0a0a0a;
-  --foreground: #ededed;
+  --foreground: #acacac;
   --primary: #5B3DF5;
   --secondary: #1ED760;
 }
@@ -34,7 +34,7 @@
     --primary: #5B3DF5;
     --secondary: #1ED760;
 
-    --foreground: #f8fafc;
+    --foreground: #acacac;
   }}
 
 body {
