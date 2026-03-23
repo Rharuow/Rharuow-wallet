@@ -169,7 +169,7 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
       <div className="lg:ml-64">
 
         {/* Top bar — hidden on lg+ */}
-        <header className="flex lg:![display:none] items-center gap-4 border-b border-slate-200 bg-[var(--background)] px-4 py-3 shadow-sm">
+        <header className="flex lg:![display:none] items-center gap-4 border-b border-slate-200 bg-[var(--background)] px-4 py-3 shadow-sm sticky top-0">
           <Button onClick={() => setOpen(true)}>☰</Button>
           <div className="grow flex justify-center">
             <Image

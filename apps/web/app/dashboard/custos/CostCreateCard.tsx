@@ -205,7 +205,7 @@ export function CostCreateCard({ areas, types, isPremium = false }: Props) {
       {isPremium && (
         <div className="mb-5">
           <p className="mb-1.5 text-xs font-semibold text-[var(--primary)]">✨ Adicionar com IA</p>
-          <div className="flex gap-2">
+          <div className="flex flex-col md:flex-row gap-2">
             <Input
               name="smartName"
               label="Nome do custo (ex: Restaurante, Netflix)"
