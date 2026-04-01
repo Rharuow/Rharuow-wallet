@@ -14,6 +14,18 @@ enum PlanType {
   PREMIUM
 }
 
+enum InviteStatus {
+  PENDING
+  ACCEPTED
+  DECLINED
+  REVOKED
+}
+
+enum WalletPermission {
+  READ
+  FULL
+}
+
 model Plan {
   id          String   @id @default(cuid())
   name        PlanType @unique
@@ -62,6 +74,10 @@ model User {
   incomeRecurrences      IncomeRecurrence[]
   emailTokens            EmailVerifyToken[]
   passwordResetTokens    PasswordResetToken[]
+  walletInvitesSent      WalletInvite[]      @relation("WalletInviteOwner")
+  walletInvitesReceived  WalletInvite[]      @relation("WalletInviteGuest")
+  walletAccessesOwned    WalletAccess[]      @relation("WalletAccessOwner")
+  walletAccessesGranted  WalletAccess[]      @relation("WalletAccessGuest")
 
   @@map("users")
 }
@@ -92,6 +108,44 @@ model PasswordResetToken {
 
   @@index([token])
   @@map("password_reset_tokens")
+}
+
+model WalletInvite {
+  id        String         @id @default(cuid())
+  ownerId   String         @map("owner_id")
+  guestEmail String        @map("guest_email")
+  guestId   String?        @map("guest_id")
+  token     String         @unique
+  status    InviteStatus   @default(PENDING)
+  expiresAt DateTime       @map("expires_at")
+  createdAt DateTime       @default(now()) @map("created_at")
+  updatedAt DateTime       @updatedAt @map("updated_at")
+  owner     User           @relation("WalletInviteOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+  guest     User?          @relation("WalletInviteGuest", fields: [guestId], references: [id], onDelete: SetNull)
+  access    WalletAccess?
+
+  @@index([ownerId, guestEmail, status])
+  @@index([guestEmail, status])
+  @@index([guestId, status])
+  @@map("wallet_invites")
+}
+
+model WalletAccess {
+  id         String            @id @default(cuid())
+  ownerId    String            @map("owner_id")
+  guestId    String            @map("guest_id")
+  inviteId   String            @unique @map("invite_id")
+  permission WalletPermission
+  createdAt  DateTime          @default(now()) @map("created_at")
+  updatedAt  DateTime          @updatedAt @map("updated_at")
+  owner      User              @relation("WalletAccessOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+  guest      User              @relation("WalletAccessGuest", fields: [guestId], references: [id], onDelete: Cascade)
+  invite     WalletInvite      @relation(fields: [inviteId], references: [id], onDelete: Cascade)
+
+  @@unique([ownerId, guestId])
+  @@index([guestId])
+  @@index([ownerId])
+  @@map("wallet_accesses")
 }
 
 // ---- Conta do usuário na corretora ----

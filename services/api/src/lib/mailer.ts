@@ -3,6 +3,10 @@ import { Resend } from 'resend'
 
 const APP_URL = process.env.APP_URL ?? 'http://localhost:3000'
 
+function shouldSkipEmailDelivery() {
+  return process.env.MAILER_DISABLE_SEND === 'true'
+}
+
 function buildEmailHtml(link: string) {
   return `
     <div style="font-family:sans-serif;max-width:480px;margin:auto">
@@ -51,6 +55,8 @@ export async function sendVerificationEmail(email: string, token: string) {
   const subject = 'Confirme seu cadastro — RharouWallet'
   const html = buildEmailHtml(link)
 
+  if (shouldSkipEmailDelivery()) return
+
   if (process.env.RESEND_API_KEY) {
     await sendViaResend(email, subject, html)
   } else {
@@ -84,6 +90,44 @@ export async function sendPasswordResetEmail(email: string, token: string) {
   const link = `${APP_URL}/reset-password?token=${token}`
   const subject = 'Redefinição de senha — RharouWallet'
   const html = buildPasswordResetHtml(link)
+
+  if (shouldSkipEmailDelivery()) return
+
+  if (process.env.RESEND_API_KEY) {
+    await sendViaResend(email, subject, html)
+  } else {
+    await sendViaSmtp(email, subject, html)
+  }
+}
+
+function buildWalletInviteHtml(link: string, ownerName: string) {
+  return `
+    <div style="font-family:sans-serif;max-width:480px;margin:auto">
+      <h2>Convite para carteira compartilhada — RharouWallet</h2>
+      <p><strong>${ownerName}</strong> convidou você para acessar uma carteira compartilhada.</p>
+      <p style="text-align:center;margin:32px 0">
+        <a href="${link}"
+           style="background:#2563eb;color:#fff;padding:12px 28px;border-radius:6px;text-decoration:none;font-weight:600">
+          Ver convite
+        </a>
+      </p>
+      <p style="font-size:12px;color:#888">
+        O link expira em 7 dias. Se você não esperava este convite, ignore este e-mail.
+      </p>
+      <p style="font-size:12px;color:#888">
+        Ou copie e cole no navegador:<br/>
+        <a href="${link}">${link}</a>
+      </p>
+    </div>
+  `
+}
+
+export async function sendWalletInviteEmail(email: string, token: string, ownerName: string) {
+  const link = `${APP_URL}/wallet/invite/${token}`
+  const subject = 'Convite para carteira compartilhada — RharouWallet'
+  const html = buildWalletInviteHtml(link, ownerName)
+
+  if (shouldSkipEmailDelivery()) return
 
   if (process.env.RESEND_API_KEY) {
     await sendViaResend(email, subject, html)

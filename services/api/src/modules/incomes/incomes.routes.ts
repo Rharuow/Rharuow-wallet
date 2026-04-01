@@ -1,5 +1,6 @@
 import { FastifyInstance, FastifyReply } from 'fastify'
 import { authenticate } from '../../plugins/authenticate'
+import { checkWalletAccess } from '../../plugins/walletAccess'
 import {
   CreateIncomeRecurrenceSchema,
   UpdateIncomeRecurrenceSchema,
@@ -32,19 +33,19 @@ export async function incomesRoutes(fastify: FastifyInstance) {
   // ----------------------------------------------------------------
 
   fastify.get('/recurrences', {
-    preHandler: authenticate,
+    preHandler: [authenticate, checkWalletAccess('read')],
     schema: {
       tags: ['Incomes'],
       summary: 'Listar regras de recorrência de entradas',
       security: [{ bearerAuth: [] }],
     },
   }, async (request, reply) => {
-    const recurrences = await listRecurrences(request.user.sub)
+    const recurrences = await listRecurrences(request.walletContext!.ownerId)
     return reply.send({ recurrences })
   })
 
   fastify.post('/recurrences', {
-    preHandler: authenticate,
+    preHandler: [authenticate, checkWalletAccess('write')],
     schema: {
       tags: ['Incomes'],
       summary: 'Criar regra de recorrência de entrada',
@@ -67,7 +68,7 @@ export async function incomesRoutes(fastify: FastifyInstance) {
   }, async (request, reply) => {
     const body = CreateIncomeRecurrenceSchema.parse(request.body)
     try {
-      const recurrence = await createRecurrence(request.user.sub, body)
+      const recurrence = await createRecurrence(request.walletContext!.ownerId, body)
       return reply.status(201).send({ recurrence })
     } catch (err) {
       return handleServiceError(err, reply)
@@ -75,7 +76,7 @@ export async function incomesRoutes(fastify: FastifyInstance) {
   })
 
   fastify.patch<{ Params: { id: string } }>('/recurrences/:id', {
-    preHandler: authenticate,
+    preHandler: [authenticate, checkWalletAccess('write')],
     schema: {
       tags: ['Incomes'],
       summary: 'Atualizar / pausar / retomar recorrência de entrada',
@@ -85,7 +86,7 @@ export async function incomesRoutes(fastify: FastifyInstance) {
   }, async (request, reply) => {
     const body = UpdateIncomeRecurrenceSchema.parse(request.body)
     try {
-      const recurrence = await updateRecurrence(request.user.sub, request.params.id, body)
+      const recurrence = await updateRecurrence(request.walletContext!.ownerId, request.params.id, body)
       return reply.send({ recurrence })
     } catch (err) {
       return handleServiceError(err, reply)
@@ -93,7 +94,7 @@ export async function incomesRoutes(fastify: FastifyInstance) {
   })
 
   fastify.delete<{ Params: { id: string } }>('/recurrences/:id', {
-    preHandler: authenticate,
+    preHandler: [authenticate, checkWalletAccess('write')],
     schema: {
       tags: ['Incomes'],
       summary: 'Deletar recorrência de entrada (soft delete)',
@@ -102,7 +103,7 @@ export async function incomesRoutes(fastify: FastifyInstance) {
     },
   }, async (request, reply) => {
     try {
-      await softDeleteRecurrence(request.user.sub, request.params.id)
+      await softDeleteRecurrence(request.walletContext!.ownerId, request.params.id)
       return reply.status(204).send()
     } catch (err) {
       return handleServiceError(err, reply)
@@ -114,7 +115,7 @@ export async function incomesRoutes(fastify: FastifyInstance) {
   // ----------------------------------------------------------------
 
   fastify.get<{ Querystring: Record<string, string> }>('/', {
-    preHandler: authenticate,
+    preHandler: [authenticate, checkWalletAccess('read')],
     schema: {
       tags: ['Incomes'],
       summary: 'Listar entradas com filtros de data',
@@ -131,12 +132,12 @@ export async function incomesRoutes(fastify: FastifyInstance) {
     },
   }, async (request, reply) => {
     const query = IncomeListQuerySchema.parse(request.query)
-    const result = await listIncomes(request.user.sub, query)
+    const result = await listIncomes(request.walletContext!.ownerId, query)
     return reply.send(result)
   })
 
   fastify.post('/', {
-    preHandler: authenticate,
+    preHandler: [authenticate, checkWalletAccess('write')],
     schema: {
       tags: ['Incomes'],
       summary: 'Registrar entrada avulsa',
@@ -155,7 +156,7 @@ export async function incomesRoutes(fastify: FastifyInstance) {
   }, async (request, reply) => {
     const body = CreateIncomeSchema.parse(request.body)
     try {
-      const income = await createIncome(request.user.sub, body)
+      const income = await createIncome(request.walletContext!.ownerId, body)
       return reply.status(201).send({ income })
     } catch (err) {
       return handleServiceError(err, reply)
@@ -163,7 +164,7 @@ export async function incomesRoutes(fastify: FastifyInstance) {
   })
 
   fastify.patch<{ Params: { id: string } }>('/:id', {
-    preHandler: authenticate,
+    preHandler: [authenticate, checkWalletAccess('write')],
     schema: {
       tags: ['Incomes'],
       summary: 'Atualizar entrada',
@@ -173,7 +174,7 @@ export async function incomesRoutes(fastify: FastifyInstance) {
   }, async (request, reply) => {
     const body = UpdateIncomeSchema.parse(request.body)
     try {
-      const income = await updateIncome(request.user.sub, request.params.id, body)
+      const income = await updateIncome(request.walletContext!.ownerId, request.params.id, body)
       return reply.send({ income })
     } catch (err) {
       return handleServiceError(err, reply)
@@ -181,7 +182,7 @@ export async function incomesRoutes(fastify: FastifyInstance) {
   })
 
   fastify.delete<{ Params: { id: string } }>('/:id', {
-    preHandler: authenticate,
+    preHandler: [authenticate, checkWalletAccess('write')],
     schema: {
       tags: ['Incomes'],
       summary: 'Deletar entrada (soft delete)',
@@ -190,7 +191,7 @@ export async function incomesRoutes(fastify: FastifyInstance) {
     },
   }, async (request, reply) => {
     try {
-      await softDeleteIncome(request.user.sub, request.params.id)
+      await softDeleteIncome(request.walletContext!.ownerId, request.params.id)
       return reply.status(204).send()
     } catch (err) {
       return handleServiceError(err, reply)
@@ -202,7 +203,7 @@ export async function incomesRoutes(fastify: FastifyInstance) {
   // ----------------------------------------------------------------
 
   fastify.get<{ Querystring: { dateFrom: string; dateTo: string } }>('/analytics', {
-    preHandler: authenticate,
+    preHandler: [authenticate, checkWalletAccess('read')],
     schema: {
       tags: ['Incomes'],
       summary: 'Análise de entradas por período',
@@ -219,7 +220,7 @@ export async function incomesRoutes(fastify: FastifyInstance) {
   }, async (request, reply) => {
     const query = IncomeAnalyticsQuerySchema.parse(request.query)
     try {
-      const analytics = await analyticsIncomes(request.user.sub, query)
+      const analytics = await analyticsIncomes(request.walletContext!.ownerId, query)
       return reply.send(analytics)
     } catch (err) {
       return handleServiceError(err, reply)

@@ -1,6 +1,7 @@
 import Stripe from 'stripe'
 import { stripe } from '../../lib/stripe'
 import { prisma } from '../../lib/prisma'
+import { syncWalletAccessPermissionsForUser } from '../wallet-sharing/wallet-sharing.service'
 
 const APP_URL = process.env.APP_URL ?? 'http://localhost:3000'
 
@@ -123,6 +124,8 @@ export async function activateFromSession(userId: string, sessionId: string) {
     },
   })
 
+  await syncWalletAccessPermissionsForUser(userId)
+
   return { plan: 'PREMIUM', planExpiresAt: periodEnd }
 }
 
@@ -162,6 +165,7 @@ export async function handleWebhook(rawBody: Buffer, signature: string) {
           stripeSubscriptionId: subscription.id,
         },
       })
+      await syncWalletAccessPermissionsForUser(userId)
       break
     }
 
@@ -185,6 +189,7 @@ export async function handleWebhook(rawBody: Buffer, signature: string) {
         where: { id: userId },
         data: { planExpiresAt: periodEnd },
       })
+      await syncWalletAccessPermissionsForUser(userId)
       break
     }
 
@@ -204,6 +209,7 @@ export async function handleWebhook(rawBody: Buffer, signature: string) {
           stripeSubscriptionId: null,
         },
       })
+      await syncWalletAccessPermissionsForUser(userId)
       break
     }
 
