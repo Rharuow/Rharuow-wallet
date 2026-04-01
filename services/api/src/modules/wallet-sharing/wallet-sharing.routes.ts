@@ -88,6 +88,11 @@ export async function walletSharingRoutes(fastify: FastifyInstance) {
       const access = await acceptInvite(params.token, request.user.sub)
       return reply.send({ access })
     } catch (err) {
+      console.error('[wallet-sharing] acceptInvite error:', {
+        error: err instanceof Error ? err.message : String(err),
+        stack: err instanceof Error ? err.stack : undefined,
+        statusCode: (err as { statusCode?: number }).statusCode,
+      })
       return handleServiceError(err, reply)
     }
   })

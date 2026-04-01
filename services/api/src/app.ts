@@ -40,7 +40,8 @@ export async function buildServer() {
     (req, body, done) => {
       ;(req as FastifyRequest & { rawBody?: Buffer }).rawBody = body as Buffer
       try {
-        done(null, JSON.parse((body as Buffer).toString()))
+        const bodyStr = (body as Buffer).toString().trim()
+        done(null, bodyStr ? JSON.parse(bodyStr) : {})
       } catch (e) {
         done(e as Error, undefined)
       }

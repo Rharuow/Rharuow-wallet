@@ -1,59 +1,68 @@
+import { apiFetch } from "@/lib/api";
 import { getAuthToken, getPlan } from "@/lib/auth";
 import { CostsTable, Cost, CostType, CostRecurrence } from "./CostsTable";
 import { CostArea } from "./areas/AreasTable";
+import { getWalletContext } from "@/lib/wallet";
 
 export const metadata = { title: "Custos — RharouWallet" };
-
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001";
 const PAGE_LIMIT = 20;
 
-async function fetchAreas(token: string | null): Promise<CostArea[]> {
+async function fetchAreas(
+  token: string | null,
+  walletOwnerId?: string | null
+): Promise<CostArea[]> {
   if (!token) return [];
-  const res = await fetch(`${API_URL}/v1/costs/areas`, {
-    headers: { Authorization: `Bearer ${token}` },
+  const data = await apiFetch<{ areas: CostArea[] }>("/v1/costs/areas", {
+    token,
+    walletOwnerId,
     cache: "no-store",
   });
-  if (!res.ok) return [];
-  const data = await res.json();
   return data.areas ?? [];
 }
 
-async function fetchTypes(token: string | null): Promise<CostType[]> {
+async function fetchTypes(
+  token: string | null,
+  walletOwnerId?: string | null
+): Promise<CostType[]> {
   if (!token) return [];
-  const res = await fetch(`${API_URL}/v1/costs/types`, {
-    headers: { Authorization: `Bearer ${token}` },
+  const data = await apiFetch<{ types: CostType[] }>("/v1/costs/types", {
+    token,
+    walletOwnerId,
     cache: "no-store",
   });
-  if (!res.ok) return [];
-  const data = await res.json();
   return data.types ?? [];
 }
 
 async function fetchCosts(
   token: string | null,
+  walletOwnerId: string | null | undefined,
   page: number
 ): Promise<{ costs: Cost[]; total: number }> {
   if (!token) return { costs: [], total: 0 };
-  const res = await fetch(
-    `${API_URL}/v1/costs?page=${page}&limit=${PAGE_LIMIT}`,
+  const data = await apiFetch<{ costs: Cost[]; total: number }>(
+    `/v1/costs?page=${page}&limit=${PAGE_LIMIT}`,
     {
-      headers: { Authorization: `Bearer ${token}` },
+      token,
+      walletOwnerId,
       cache: "no-store",
     }
   );
-  if (!res.ok) return { costs: [], total: 0 };
-  const data = await res.json();
   return { costs: data.costs ?? [], total: data.total ?? 0 };
 }
 
-async function fetchRecurrences(token: string | null): Promise<CostRecurrence[]> {
+async function fetchRecurrences(
+  token: string | null,
+  walletOwnerId?: string | null
+): Promise<CostRecurrence[]> {
   if (!token) return [];
-  const res = await fetch(`${API_URL}/v1/costs/recurrences`, {
-    headers: { Authorization: `Bearer ${token}` },
-    cache: "no-store",
-  });
-  if (!res.ok) return [];
-  const data = await res.json();
+  const data = await apiFetch<{ recurrences: CostRecurrence[] }>(
+    "/v1/costs/recurrences",
+    {
+      token,
+      walletOwnerId,
+      cache: "no-store",
+    }
+  );
   return data.recurrences ?? [];
 }
 
@@ -65,11 +74,15 @@ export default async function CustoPage({
   const { page: pageParam } = await searchParams;
   const page = Math.max(1, parseInt(pageParam ?? "1", 10) || 1);
   const token = await getAuthToken();
+  const walletContext = await getWalletContext();
+  const walletOwnerId = walletContext?.isShared
+    ? walletContext.activeWallet.ownerId
+    : null;
   const [{ costs, total }, types, areas, recurrences, plan] = await Promise.all([
-    fetchCosts(token, page),
-    fetchTypes(token),
-    fetchAreas(token),
-    fetchRecurrences(token),
+    fetchCosts(token, walletOwnerId, page),
+    fetchTypes(token, walletOwnerId),
+    fetchAreas(token, walletOwnerId),
+    fetchRecurrences(token, walletOwnerId),
     token ? getPlan(token) : Promise.resolve<"FREE" | "PREMIUM">("FREE"),
   ]);
 
@@ -90,7 +103,8 @@ export default async function CustoPage({
         recurrences={recurrences}
         currentPage={page}
         totalPages={totalPages}
-        isPremium={plan === "PREMIUM"}
+        isPremium={plan === "PREMIUM" && !walletContext?.isShared}
+        canWrite={walletContext?.canWrite ?? true}
       />
     </div>
   );

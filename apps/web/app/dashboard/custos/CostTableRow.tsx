@@ -20,9 +20,10 @@ interface Props {
   edit: EditBag;
   lists: ListsBag;
   onDeleteRequest: (cost: Cost) => void;
+  canWrite?: boolean;
 }
 
-export function CostTableRow({ cost, localAreas, localTypes, edit, lists, onDeleteRequest }: Props) {
+export function CostTableRow({ cost, localAreas, localTypes, edit, lists, onDeleteRequest, canWrite = true }: Props) {
   const isEditing = edit.editingId === cost.id;
 
   const costType = localTypes.find((t) => t.id === cost.costTypeId);
@@ -252,14 +253,18 @@ export function CostTableRow({ cost, localAreas, localTypes, edit, lists, onDele
               {cost.description ?? "—"}
             </Table.Cell>
             <Table.Cell align="center">
-              <div className="flex items-center justify-center gap-2">
-                <Button variant="icon" onClick={() => edit.startEdit(cost)} title="Editar custo">
-                  <PencilIcon />
-                </Button>
-                <Button variant="icon" onClick={() => onDeleteRequest(cost)} title="Remover custo">
-                  <TrashIcon />
-                </Button>
-              </div>
+              {canWrite ? (
+                <div className="flex items-center justify-center gap-2">
+                  <Button variant="icon" onClick={() => edit.startEdit(cost)} title="Editar custo">
+                    <PencilIcon />
+                  </Button>
+                  <Button variant="icon" onClick={() => onDeleteRequest(cost)} title="Remover custo">
+                    <TrashIcon />
+                  </Button>
+                </div>
+              ) : (
+                <span className="text-xs text-slate-400">Somente leitura</span>
+              )}
             </Table.Cell>
           </>
         )}

@@ -18,6 +18,10 @@ function permissionFromPlan(planName: PlanType | null | undefined) {
   return planName === PlanType.PREMIUM ? WalletPermission.FULL : WalletPermission.READ
 }
 
+async function deliverInviteEmail(guestEmail: string, token: string, ownerName: string) {
+  await sendWalletInviteEmail(guestEmail, token, ownerName)
+}
+
 async function getUserForInvite(userId: string) {
   const user = await prisma.user.findUnique({
     where: { id: userId },
@@ -58,10 +62,34 @@ export async function createInvite(ownerId: string, data: CreateWalletInviteInpu
       status: InviteStatus.PENDING,
       expiresAt: { gt: new Date() },
     },
+    include: {
+      owner: { select: { id: true, email: true, name: true } },
+      guest: { select: { id: true, email: true, name: true } },
+    },
   })
 
   if (existingPendingInvite) {
-    throw serviceError('INVITE_PENDING_CONFLICT', 409)
+    const refreshedInvite = await prisma.walletInvite.update({
+      where: { id: existingPendingInvite.id },
+      data: {
+        token: crypto.randomBytes(32).toString('hex'),
+        expiresAt: new Date(Date.now() + INVITE_TTL_MS),
+        guestId: guest?.id ?? existingPendingInvite.guestId ?? null,
+      },
+      include: {
+        owner: { select: { id: true, email: true, name: true } },
+        guest: { select: { id: true, email: true, name: true } },
+      },
+    })
+
+    await deliverInviteEmail(refreshedInvite.guestEmail, refreshedInvite.token, owner.name ?? owner.email)
+    console.info('[wallet-sharing] invite.resent', {
+      inviteId: refreshedInvite.id,
+      ownerId,
+      guestEmail: refreshedInvite.guestEmail,
+    })
+
+    return refreshedInvite
   }
 
   if (guest) {
@@ -89,7 +117,7 @@ export async function createInvite(ownerId: string, data: CreateWalletInviteInpu
     },
   })
 
-  await sendWalletInviteEmail(invite.guestEmail, invite.token, owner.name ?? owner.email)
+  await deliverInviteEmail(invite.guestEmail, invite.token, owner.name ?? owner.email)
   console.info('[wallet-sharing] invite.created', {
     inviteId: invite.id,
     ownerId,

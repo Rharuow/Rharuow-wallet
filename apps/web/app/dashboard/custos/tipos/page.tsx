@@ -1,36 +1,50 @@
+import { apiFetch } from "@/lib/api";
 import { getAuthToken } from "@/lib/auth";
 import { TypesTable } from "./TypesTable";
 import { CostType } from "../types";
+import { getWalletContext } from "@/lib/wallet";
 
 export const metadata = { title: "Tipos de Custo — RharouWallet" };
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001";
-
-async function fetchTypes(token: string | null): Promise<CostType[]> {
+async function fetchTypes(
+  token: string | null,
+  walletOwnerId?: string | null
+): Promise<CostType[]> {
   if (!token) return [];
-  const res = await fetch(`${API_URL}/v1/costs/types`, {
-    headers: { Authorization: `Bearer ${token}` },
+  const data = await apiFetch<{ types: CostType[] }>("/v1/costs/types", {
+    token,
+    walletOwnerId,
     cache: "no-store",
   });
-  if (!res.ok) return [];
-  const data = await res.json();
   return data.types ?? [];
 }
 
-async function fetchAreas(token: string | null): Promise<{ id: string; name: string }[]> {
+async function fetchAreas(
+  token: string | null,
+  walletOwnerId?: string | null
+): Promise<{ id: string; name: string }[]> {
   if (!token) return [];
-  const res = await fetch(`${API_URL}/v1/costs/areas`, {
-    headers: { Authorization: `Bearer ${token}` },
-    cache: "no-store",
-  });
-  if (!res.ok) return [];
-  const data = await res.json();
+  const data = await apiFetch<{ areas: { id: string; name: string }[] }>(
+    "/v1/costs/areas",
+    {
+      token,
+      walletOwnerId,
+      cache: "no-store",
+    }
+  );
   return data.areas ?? [];
 }
 
 export default async function TiposPage() {
   const token = await getAuthToken();
-  const [types, areas] = await Promise.all([fetchTypes(token), fetchAreas(token)]);
+  const walletContext = await getWalletContext();
+  const walletOwnerId = walletContext?.isShared
+    ? walletContext.activeWallet.ownerId
+    : null;
+  const [types, areas] = await Promise.all([
+    fetchTypes(token, walletOwnerId),
+    fetchAreas(token, walletOwnerId),
+  ]);
 
   return (
     <div className="flex flex-col gap-6">
@@ -42,7 +56,11 @@ export default async function TiposPage() {
           Tipos de custo associados às áreas cadastradas.
         </p>
       </div>
-      <TypesTable types={types} areas={areas} />
+      <TypesTable
+        types={types}
+        areas={areas}
+        canWrite={walletContext?.canWrite ?? true}
+      />
     </div>
   );
 }

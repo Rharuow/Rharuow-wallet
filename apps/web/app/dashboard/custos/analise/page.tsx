@@ -1,39 +1,47 @@
+import { apiFetch } from "@/lib/api";
 import { getAuthToken, getPlan } from "@/lib/auth";
 import { AnalysisShell } from "./AnalysisShell";
 import { PremiumGate } from "@/components/PremiumGate";
+import { getWalletContext } from "@/lib/wallet";
 
 export const metadata = { title: "Análise de Custos — RharouWallet" };
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001";
-
-async function fetchAreas(token: string | null) {
+async function fetchAreas(token: string | null, walletOwnerId?: string | null) {
   if (!token) return [];
-  const res = await fetch(`${API_URL}/v1/costs/areas`, {
-    headers: { Authorization: `Bearer ${token}` },
-    cache: "no-store",
-  });
-  if (!res.ok) return [];
-  const data = await res.json();
+  const data = await apiFetch<{ areas: { id: string; name: string }[] }>(
+    "/v1/costs/areas",
+    {
+      token,
+      walletOwnerId,
+      cache: "no-store",
+    }
+  );
   return (data.areas ?? []) as { id: string; name: string }[];
 }
 
-async function fetchTypes(token: string | null) {
+async function fetchTypes(token: string | null, walletOwnerId?: string | null) {
   if (!token) return [];
-  const res = await fetch(`${API_URL}/v1/costs/types`, {
-    headers: { Authorization: `Bearer ${token}` },
-    cache: "no-store",
-  });
-  if (!res.ok) return [];
-  const data = await res.json();
+  const data = await apiFetch<{ types: { id: string; name: string; areaId: string }[] }>(
+    "/v1/costs/types",
+    {
+      token,
+      walletOwnerId,
+      cache: "no-store",
+    }
+  );
   return (data.types ?? []) as { id: string; name: string; areaId: string }[];
 }
 
 export default async function AnalisePage() {
   const token = await getAuthToken();
+  const walletContext = await getWalletContext();
+  const walletOwnerId = walletContext?.isShared
+    ? walletContext.activeWallet.ownerId
+    : null;
   const [plan, areas, types] = await Promise.all([
     token ? getPlan(token) : Promise.resolve<"FREE" | "PREMIUM">("FREE"),
-    fetchAreas(token),
-    fetchTypes(token),
+    fetchAreas(token, walletOwnerId),
+    fetchTypes(token, walletOwnerId),
   ]);
 
   return (
@@ -49,7 +57,11 @@ export default async function AnalisePage() {
       {plan !== "PREMIUM" ? (
         <PremiumGate feature="A análise de custos domésticos" />
       ) : (
-        <AnalysisShell areas={areas} types={types} />
+        <AnalysisShell
+          areas={areas}
+          types={types}
+          allowInsights={!walletContext?.isShared}
+        />
       )}
     </div>
   );

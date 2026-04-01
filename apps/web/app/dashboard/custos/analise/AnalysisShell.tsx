@@ -25,9 +25,10 @@ interface Analytics {
 interface Props {
   areas: Area[];
   types: CostType[];
+  allowInsights?: boolean;
 }
 
-export function AnalysisShell({ areas, types }: Props) {
+export function AnalysisShell({ areas, types, allowInsights = true }: Props) {
   const [analytics, setAnalytics] = useState<Analytics | null>(null);
   const [filters, setFilters] = useState<Filters | null>(null);
   const [loading, setLoading] = useState(false);
@@ -74,7 +75,7 @@ export function AnalysisShell({ areas, types }: Props) {
             byArea={analytics.byArea}
             grandTotal={analytics.summary.total}
           />
-          {filters && (
+          {allowInsights && filters && (
             <InsightsCard
               key={`${filters.dateFrom}-${filters.dateTo}`}
               type="costs"
@@ -82,7 +83,7 @@ export function AnalysisShell({ areas, types }: Props) {
               analytics={analytics as unknown as Record<string, unknown>}
             />
           )}
-          {filters && (
+          {allowInsights && filters && (
             <BudgetGoalsCard
               key={`budget-${filters.dateFrom}-${filters.dateTo}`}
               period={{ dateFrom: filters.dateFrom, dateTo: filters.dateTo }}

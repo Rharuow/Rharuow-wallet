@@ -123,7 +123,7 @@ function buildWalletInviteHtml(link: string, ownerName: string) {
 }
 
 export async function sendWalletInviteEmail(email: string, token: string, ownerName: string) {
-  const link = `${APP_URL}/wallet/invite/${token}`
+  const link = `${APP_URL}/convites/${token}`
   const subject = 'Convite para carteira compartilhada — RharouWallet'
   const html = buildWalletInviteHtml(link, ownerName)
 

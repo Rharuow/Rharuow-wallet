@@ -403,7 +403,7 @@ Dono envia convite
                   │                                                            │
                   ▼                                                            ▼
         Sino de notificação acende            Convidado abre link no e-mail
-        Convidado vê convite no painel  ──────────►  /wallet/invite/[token]
+        Convidado vê convite no painel  ──────────►  /convites/[token]
                   │                                          │
                   └──────────────────┬───────────────────────┘
                                      │
@@ -467,7 +467,7 @@ Dono envia convite
 | title | String | Título curto exibido no sino |
 | body | String | Mensagem detalhada |
 | read | Boolean | `false` = não lida |
-| actionUrl | String? | Rota frontend para navegação ao clicar (ex: `/wallet/invite/:token`) |
+| actionUrl | String? | Rota frontend para navegação ao clicar (ex: `/convites/:token`) |
 | metadata | Json? | Dados extras contextuais (ex: `{ inviteId, ownerId }`) |
 | createdAt | DateTime | — |
 
@@ -548,8 +548,8 @@ Localização sugerida: `services/api/src/modules/wallet-sharing/`
    - Gerar `token` com `crypto.randomBytes(32).toString('hex')`.
    - Definir `expiresAt = now + 7 dias`.
    - Salvar `WalletInvite` com `status = PENDING`.
-   - **Canal e-mail:** enviar e-mail via `mailer` com link `{FRONTEND_URL}/wallet/invite/{token}`.
-   - **Canal in-app:** se o e-mail convidado corresponder a um `User` cadastrado, criar `Notification` do tipo `WALLET_INVITE` para esse usuário com `actionUrl = /wallet/invite/{token}` e `metadata = { inviteId, ownerName }`.
+  - **Canal e-mail:** enviar e-mail via `mailer` com link `{FRONTEND_URL}/convites/{token}`.
+  - **Canal in-app:** se o e-mail convidado corresponder a um `User` cadastrado, criar `Notification` do tipo `WALLET_INVITE` para esse usuário com `actionUrl = /convites/{token}` e `metadata = { inviteId, ownerName }`.
 
 2. **Aceite do convite (`POST /v1/wallet/invites/:token/accept`)**
    - Buscar convite pelo `token`; validar `status = PENDING` e `expiresAt > now`.
@@ -627,7 +627,7 @@ Módulos **não** expostos para usuários FREE: `portfolio`, `stocks`, `fiis`.
   - Convites `PENDING` exibem botões "Aceitar" e "Recusar" (mesma ação do sino).
   - Botão "Acessar carteira" para acessos aceitos.
 
-##### 4. Página de aceite de convite via e-mail (`/wallet/invite/[token]`)
+##### 4. Página de aceite de convite via e-mail (`/convites/[token]`)
 
 - Página pública (redireciona para login se não autenticado, preservando o token na URL de retorno).
 - Exibe: nome/e-mail do dono da carteira, nível de permissão que o convidado receberá com base no seu plano atual.
@@ -678,7 +678,7 @@ User (qualquer)
 ### Status Atual
 
 - [x] Lote 1 concluído em backend: banco, módulo `wallet-sharing`, autorização compartilhada, sync de permissão no upgrade e testes de integração.
-- [ ] Lote 2 pendente: páginas e fluxo frontend do MVP.
+- [x] Lote 2 implementado no frontend MVP: fluxo por token, gestão de compartilhamento, wallet switcher, contexto ativo e guardas visuais de permissão.
 - [ ] Lote 3 pendente: notificações in-app e hardening final.
 
 #### Backend / Banco de dados
@@ -697,13 +697,13 @@ User (qualquer)
 #### Frontend
 - [ ] Implementar componente `<NotificationBell />` com polling, drawer e ações inline de aceitar/recusar convite.
 - [ ] Criar página `/dashboard/notificacoes` com listagem paginada e filtros.
-- [ ] Criar página `/dashboard/compartilhamento` com abas de acessos concedidos e recebidos.
-- [ ] Criar página pública `/wallet/invite/[token]` para aceite/recusa via link de e-mail.
-- [ ] Implementar componente `<WalletSwitcher />` no header do dashboard.
-- [ ] Implementar contexto/estado global para `activeOwnerId` (carteira ativa).
-- [ ] Adaptar chamadas das páginas de Custos e Entradas para respeitar `activeOwnerId`.
-- [ ] Ocultar/desabilitar módulos não permitidos para convidados FREE (Ações, FIIs, Saúde Financeira).
-- [ ] Adicionar banner de contexto "Você está visualizando a carteira de X".
+- [x] Criar página `/dashboard/compartilhamento` com abas de acessos concedidos e recebidos.
+- [x] Criar página pública `/convites/[token]` para aceite/recusa via link de e-mail.
+- [x] Implementar componente `<WalletSwitcher />` no header do dashboard.
+- [x] Implementar contexto/estado global para `activeOwnerId` (carteira ativa).
+- [x] Adaptar chamadas das páginas de Custos e Entradas para respeitar `activeOwnerId`.
+- [x] Ocultar/desabilitar módulos não permitidos para convidados FREE (Ações, FIIs, Saúde Financeira).
+- [x] Adicionar banner de contexto "Você está visualizando a carteira de X".
 
 ---
 
@@ -714,7 +714,7 @@ Objetivo: colocar compartilhamento de carteira em produção com risco controlad
 ### Escopo mínimo (entra no MVP)
 
 1. Convite por e-mail com token e expiração.
-2. Aceite e recusa por link (`/wallet/invite/[token]`).
+2. Aceite e recusa por link (`/convites/[token]`).
 3. Criação de acesso compartilhado após aceite.
 4. Permissão baseada no plano do convidado:
   - PREMIUM -> `FULL`.
@@ -824,9 +824,11 @@ Status: concluído.
 
 Foco do lote: plugar o frontend ao backend do Lote 1 e entregar o fluxo ponta a ponta de compartilhamento com UX simples e consistente.
 
+Status: implementado no frontend MVP, com pendência de suíte E2E dedicada (`L2-08`).
+
 ### Escopo do Lote 2
 
-1. Página de aceite/recusa via token: `/wallet/invite/[token]`.
+1. Página de aceite/recusa via token: `/convites/[token]`.
 2. Página de gestão de compartilhamento no dashboard: envio de convite, listagem e revogação.
 3. `WalletSwitcher` no dashboard com estado de carteira ativa (`ownerId`).
 4. Propagação de `X-Wallet-Owner` nas chamadas de `costs` e `incomes`.
@@ -838,7 +840,7 @@ Foco do lote: plugar o frontend ao backend do Lote 1 e entregar o fluxo ponta a 
 1. Implementar estado global de carteira ativa e persistência básica em sessão.
 2. Adaptar camada de API para injetar `X-Wallet-Owner` quando aplicável.
 3. Criar página `/dashboard/compartilhamento` com enviar convite/listar/revogar.
-4. Criar página `/wallet/invite/[token]` com fluxo de login e retorno.
+4. Criar página `/convites/[token]` com fluxo de login e retorno.
 5. Implementar `WalletSwitcher` e banner de contexto no shell do dashboard.
 6. Aplicar bloqueios de escrita para convidado FREE nas telas de custos/entradas.
 7. Fechar com testes de integração frontend-backend e polimento de UX.
@@ -948,7 +950,7 @@ Legenda de estimativa:
 | `L1-01` Migration wallet sharing | Concluído | P0 | — | S | Criar `WalletInvite`, `WalletAccess`, enums e índices/constraints no Prisma |
 | `L1-02` Serviço de domínio de convites | Concluído | P0 | `L1-01` | M | Implementar regras de criar/aceitar/recusar/revogar convite com validações de status e expiração |
 | `L1-03` Rotas Fastify wallet-sharing | Concluído | P0 | `L1-02` | M | Expor endpoints do módulo com validação de payload/params e respostas padronizadas |
-| `L1-04` Mailer de convite | Concluído | P1 | `L1-03` | S | Disparar e-mail com link `/wallet/invite/:token` e template de convite |
+| `L1-04` Mailer de convite | Concluído | P1 | `L1-03` | S | Disparar e-mail com link `/convites/:token` e template de convite |
 | `L1-05` Middleware checkWalletAccess | Concluído | P0 | `L1-02` | S | Autorizar acesso por `ownerId` e bloquear escrita quando `READ` |
 | `L1-06` Aplicar ownerId em costs | Concluído | P0 | `L1-05` | M | Adaptar rotas/serviços de custos para contexto compartilhado com `X-Wallet-Owner` |
 | `L1-07` Aplicar ownerId em incomes | Concluído | P0 | `L1-05` | M | Adaptar rotas/serviços de entradas para contexto compartilhado com `X-Wallet-Owner` |
@@ -958,17 +960,17 @@ Legenda de estimativa:
 
 ### Lote 2 - Frontend MVP + Integração E2E
 
-| Ticket | Prioridade | Dependências | Estimativa | Entrega objetiva |
+| Ticket | Status | Prioridade | Dependências | Estimativa | Entrega objetiva |
 |---|---|---|---|---|
-| `L2-01` Estado global da carteira ativa | P0 | `L1-06`, `L1-07` | S | Criar `activeOwnerId` com persistência em sessão |
-| `L2-02` Header X-Wallet-Owner no client API | P0 | `L2-01` | S | Injetar `X-Wallet-Owner` automaticamente nas chamadas elegíveis |
-| `L2-03` Página compartilhamento dashboard | P0 | `L1-03`, `L2-02` | M | Tela para enviar convite, listar enviados e revogar acesso |
-| `L2-04` Página pública de convite por token | P0 | `L1-03` | M | Implementar `/wallet/invite/[token]` com aceitar/recusar e tratamento de autenticação |
-| `L2-05` WalletSwitcher no dashboard | P0 | `L2-01`, `L1-03` | M | Alternar entre minha carteira e carteiras compartilhadas comigo |
-| `L2-06` Banner de contexto de carteira | P1 | `L2-05` | XS | Exibir dono ativo e ação para voltar para minha carteira |
-| `L2-07` Guardas de UI para FREE | P0 | `L2-05`, `L1-05` | S | Bloquear ações de escrita e esconder módulos não permitidos |
-| `L2-08` E2E fluxo convite e troca de contexto | P0 | `L2-03`, `L2-04`, `L2-05`, `L2-07` | L | Cobrir aceite por link, alternância de carteira e bloqueio pós-revogação |
-| `L2-09` Polimento UX de erro/loading | P1 | `L2-08` | S | Estados vazios, retry e mensagens amigáveis de token |
+| `L2-01` Estado global da carteira ativa | Concluído | P0 | `L1-06`, `L1-07` | S | Criar `activeOwnerId` com persistência em sessão |
+| `L2-02` Header X-Wallet-Owner no client API | Concluído | P0 | `L2-01` | S | Injetar `X-Wallet-Owner` automaticamente nas chamadas elegíveis |
+| `L2-03` Página compartilhamento dashboard | Concluído | P0 | `L1-03`, `L2-02` | M | Tela para enviar convite, listar enviados e revogar acesso |
+| `L2-04` Página pública de convite por token | Concluído | P0 | `L1-03` | M | Implementar `/convites/[token]` com aceitar/recusar e tratamento de autenticação |
+| `L2-05` WalletSwitcher no dashboard | Concluído | P0 | `L2-01`, `L1-03` | M | Alternar entre minha carteira e carteiras compartilhadas comigo |
+| `L2-06` Banner de contexto de carteira | Concluído | P1 | `L2-05` | XS | Exibir dono ativo e ação para voltar para minha carteira |
+| `L2-07` Guardas de UI para FREE | Concluído | P0 | `L2-05`, `L1-05` | S | Bloquear ações de escrita e esconder módulos não permitidos |
+| `L2-08` E2E fluxo convite e troca de contexto | Pendente | P0 | `L2-03`, `L2-04`, `L2-05`, `L2-07` | L | Cobrir aceite por link, alternância de carteira e bloqueio pós-revogação |
+| `L2-09` Polimento UX de erro/loading | Concluído | P1 | `L2-08` | S | Estados vazios, retry e mensagens amigáveis de token |
 
 ### Lote 3 - Notificações + Hardening + Polimento Final
 

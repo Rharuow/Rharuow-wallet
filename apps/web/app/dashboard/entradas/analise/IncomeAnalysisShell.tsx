@@ -71,7 +71,13 @@ function formatMonth(ym: string) {
   return `${names[parseInt(month, 10) - 1]}/${year.slice(2)}`;
 }
 
-function BRLTooltip({ active, payload, label }: any) {
+type ChartTooltipProps = {
+  active?: boolean;
+  label?: string;
+  payload?: Array<{ value: number; name?: string }>;
+};
+
+function BRLTooltip({ active, payload, label }: ChartTooltipProps) {
   if (!active || !payload?.length) return null;
   return (
     <div className="rounded-lg border border-slate-200 bg-[var(--background)] p-3 text-xs shadow-md">
@@ -81,7 +87,7 @@ function BRLTooltip({ active, payload, label }: any) {
   );
 }
 
-function PieTooltipContent({ active, payload }: any) {
+function PieTooltipContent({ active, payload }: ChartTooltipProps) {
   if (!active || !payload?.length) return null;
   return (
     <div className="rounded-lg border border-slate-200 bg-[var(--background)] p-3 text-xs shadow-md">
@@ -195,7 +201,7 @@ function PeriodFilter({
 // ----------------------------------------------------------------
 // Main shell
 // ----------------------------------------------------------------
-export function IncomeAnalysisShell() {
+export function IncomeAnalysisShell({ allowInsights = true }: { allowInsights?: boolean }) {
   const [analytics, setAnalytics] = useState<Analytics | null>(null);
   const [costTotal, setCostTotal] = useState<number | null>(null);
   const [appliedFilters, setAppliedFilters] = useState<Filters>(DEFAULT_DATES);
@@ -434,13 +440,15 @@ export function IncomeAnalysisShell() {
           </Card>
 
           {/* AI Insights */}
-          <InsightsCard
-            key={`${appliedFilters.dateFrom}-${appliedFilters.dateTo}`}
-            type="incomes"
-            period={{ dateFrom: appliedFilters.dateFrom, dateTo: appliedFilters.dateTo }}
-            analytics={analytics as unknown as Record<string, unknown>}
-            costTotal={costTotal ?? undefined}
-          />
+          {allowInsights && (
+            <InsightsCard
+              key={`${appliedFilters.dateFrom}-${appliedFilters.dateTo}`}
+              type="incomes"
+              period={{ dateFrom: appliedFilters.dateFrom, dateTo: appliedFilters.dateTo }}
+              analytics={analytics as unknown as Record<string, unknown>}
+              costTotal={costTotal ?? undefined}
+            />
+          )}
         </>
       )}
     </div>

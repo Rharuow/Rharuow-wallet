@@ -1,7 +1,15 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 
-const publicRoutes = ["/login", "/register", "/verify-email", "/forgot-password", "/reset-password"];
+const publicRoutes = [
+  "/login",
+  "/register",
+  "/verify-email",
+  "/forgot-password",
+  "/reset-password",
+  "/convites",
+  "/wallet/invite",
+];
 
 export function middleware(request: NextRequest) {
   const token = request.cookies.get("auth_token")?.value;
@@ -13,7 +21,12 @@ export function middleware(request: NextRequest) {
     return NextResponse.redirect(new URL("/login", request.url));
   }
 
-  if (token && isPublic) {
+  if (
+    token &&
+    isPublic &&
+    !pathname.startsWith("/convites") &&
+    !pathname.startsWith("/wallet/invite")
+  ) {
     return NextResponse.redirect(new URL("/dashboard", request.url));
   }
 

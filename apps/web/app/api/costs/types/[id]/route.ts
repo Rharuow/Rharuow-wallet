@@ -1,5 +1,7 @@
 import { cookies } from "next/headers";
 import { NextRequest, NextResponse } from "next/server";
+import { buildApiHeaders } from "@/lib/api";
+import { getRawActiveWalletOwnerId } from "@/lib/wallet";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001";
 
@@ -13,13 +15,11 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
+  const walletOwnerId = await getRawActiveWalletOwnerId();
   const body = await req.json();
   const res = await fetch(`${API_BASE}/v1/costs/types/${id}`, {
     method: "PATCH",
-    headers: {
-      Authorization: `Bearer ${await token()}`,
-      "Content-Type": "application/json",
-    },
+    headers: buildApiHeaders({ token: await token(), walletOwnerId }),
     body: JSON.stringify(body),
   });
   const data = await res.json();
@@ -31,9 +31,10 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
+  const walletOwnerId = await getRawActiveWalletOwnerId();
   const res = await fetch(`${API_BASE}/v1/costs/types/${id}`, {
     method: "DELETE",
-    headers: { Authorization: `Bearer ${await token()}` },
+    headers: buildApiHeaders({ token: await token(), walletOwnerId }),
   });
   if (res.status === 204) return new NextResponse(null, { status: 204 });
   const data = await res.json();

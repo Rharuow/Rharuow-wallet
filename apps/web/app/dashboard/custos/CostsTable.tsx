@@ -24,9 +24,10 @@ interface Props {
   currentPage: number;
   totalPages: number;
   isPremium?: boolean;
+  canWrite?: boolean;
 }
 
-export function CostsTable({ costs, types, areas, recurrences, currentPage, totalPages, isPremium = false }: Props) {
+export function CostsTable({ costs, types, areas, recurrences, currentPage, totalPages, isPremium = false, canWrite = true }: Props) {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -44,7 +45,13 @@ export function CostsTable({ costs, types, areas, recurrences, currentPage, tota
 
   return (
     <>
-      <CostCreateCard areas={areas} types={types} isPremium={isPremium} />
+      {canWrite ? (
+        <CostCreateCard areas={areas} types={types} isPremium={isPremium} />
+      ) : (
+        <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
+          Esta carteira está em modo somente leitura para o seu usuário.
+        </div>
+      )}
 
       {/* ── Mobile: cards ── */}
       <div className="flex flex-col gap-3 md:hidden">
@@ -60,6 +67,7 @@ export function CostsTable({ costs, types, areas, recurrences, currentPage, tota
             edit={edit}
             lists={lists}
             onDeleteRequest={setDeleteTarget}
+            canWrite={canWrite}
           />
         ))}
       </div>
@@ -94,6 +102,7 @@ export function CostsTable({ costs, types, areas, recurrences, currentPage, tota
                 edit={edit}
                 lists={lists}
                 onDeleteRequest={setDeleteTarget}
+                canWrite={canWrite}
               />
             ))}
           </Table.Body>

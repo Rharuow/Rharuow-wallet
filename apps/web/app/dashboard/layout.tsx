@@ -1,13 +1,17 @@
 import { redirect } from "next/navigation";
 import { getAuthUser } from "@/lib/auth";
 import { DashboardShell } from "./DashboardShell";
+import { getWalletContext } from "@/lib/wallet";
 
 export default async function DashboardLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
-  const user = await getAuthUser();
+  const [user, walletContext] = await Promise.all([
+    getAuthUser(),
+    getWalletContext(),
+  ]);
 
   if (!user) {
     // Redireciona via logout para garantir que o cookie seja limpo antes
@@ -15,5 +19,9 @@ export default async function DashboardLayout({
     redirect("/api/auth/logout");
   }
 
-  return <DashboardShell>{children}</DashboardShell>;
+  if (!walletContext) {
+    redirect("/api/auth/logout");
+  }
+
+  return <DashboardShell walletContext={walletContext}>{children}</DashboardShell>;
 }

@@ -17,6 +17,7 @@ interface Props {
   recurrences: IncomeRecurrence[];
   currentPage: number;
   totalPages: number;
+  canWrite?: boolean;
 }
 
 export function IncomesTable({
@@ -24,6 +25,7 @@ export function IncomesTable({
   recurrences,
   currentPage,
   totalPages,
+  canWrite = true,
 }: Props) {
   const router = useRouter();
   const pathname = usePathname();
@@ -40,7 +42,13 @@ export function IncomesTable({
 
   return (
     <>
-      <IncomeCreateCard />
+      {canWrite ? (
+        <IncomeCreateCard />
+      ) : (
+        <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
+          Esta carteira está em modo somente leitura para o seu usuário.
+        </div>
+      )}
 
       {/* ── Mobile: cards ── */}
       <div className="flex flex-col gap-3 md:hidden">
@@ -56,6 +64,7 @@ export function IncomesTable({
             recurrences={recurrences}
             edit={edit}
             onDeleteRequest={setDeleteTarget}
+            canWrite={canWrite}
           />
         ))}
       </div>
@@ -104,6 +113,7 @@ export function IncomesTable({
                 recurrences={recurrences}
                 edit={edit}
                 onDeleteRequest={setDeleteTarget}
+                canWrite={canWrite}
               />
             ))}
           </Table.Body>

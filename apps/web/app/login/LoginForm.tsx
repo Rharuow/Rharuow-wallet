@@ -9,7 +9,7 @@ type LoginFormData = {
   password: string;
 };
 
-export function LoginForm() {
+export function LoginForm({ nextPath }: { nextPath?: string | null }) {
   const methods = useForm<LoginFormData>({
     defaultValues: {
       email: "",
@@ -40,7 +40,7 @@ export function LoginForm() {
         return;
       }
 
-      router.push("/dashboard");
+      router.push(nextPath || "/dashboard");
     } catch {
       toast.error("Erro ao conectar com o servidor");
     }

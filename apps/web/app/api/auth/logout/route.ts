@@ -1,7 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
+import { ACTIVE_WALLET_COOKIE } from "@/lib/wallet";
 
 function clearAuthCookie(response: NextResponse) {
   response.cookies.set("auth_token", "", {
+    httpOnly: true,
+    maxAge: 0,
+    path: "/",
+  });
+
+  response.cookies.set(ACTIVE_WALLET_COOKIE, "", {
     httpOnly: true,
     maxAge: 0,
     path: "/",
