@@ -27,15 +27,29 @@ export function LoginForm({ nextPath }: { nextPath?: string | null }) {
 
   async function onSubmit(data: LoginFormData) {
     try {
+      const normalizedEmail = data.email.trim().toLowerCase();
       const res = await fetch("/api/auth/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(data),
+        body: JSON.stringify({
+          ...data,
+          email: normalizedEmail,
+        }),
       });
 
       const body = await res.json();
 
       if (!res.ok) {
+        if (res.status === 403) {
+          const params = new URLSearchParams({
+            email: normalizedEmail,
+            pendingVerification: "1",
+            source: "login",
+          });
+          router.push(`/register?${params.toString()}`);
+          return;
+        }
+
         toast.error(body.error ?? "Credenciais inválidas");
         return;
       }

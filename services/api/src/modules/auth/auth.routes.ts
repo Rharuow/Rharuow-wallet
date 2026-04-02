@@ -1,6 +1,6 @@
 import { FastifyInstance } from 'fastify'
-import { loginSchema, registerSchema, forgotPasswordSchema, resetPasswordSchema } from './auth.schema'
-import { loginUser, registerUser, verifyEmail, forgotPassword, resetPassword } from './auth.service'
+import { loginSchema, registerSchema, forgotPasswordSchema, resetPasswordSchema, resendVerificationSchema } from './auth.schema'
+import { loginUser, registerUser, verifyEmail, forgotPassword, resetPassword, resendVerificationEmail } from './auth.service'
 
 export async function authRoutes(fastify: FastifyInstance) {
   /**
@@ -53,6 +53,7 @@ export async function authRoutes(fastify: FastifyInstance) {
                   createdAt: { type: 'string', format: 'date-time' },
                 },
               },
+              verificationEmailSent: { type: 'boolean' },
             },
           },
         },
@@ -60,8 +61,8 @@ export async function authRoutes(fastify: FastifyInstance) {
     },
     async (request, reply) => {
       const body = registerSchema.parse(request.body)
-      const user = await registerUser(body)
-      return reply.status(201).send({ user })
+      const result = await registerUser(body)
+      return reply.status(201).send(result)
     },
   )
 
@@ -159,6 +160,34 @@ export async function authRoutes(fastify: FastifyInstance) {
    * POST /v1/auth/forgot-password
    * Envia e-mail de redefinição de senha.
    */
+  fastify.post(
+    '/resend-verification',
+    {
+      schema: {
+        tags: ['Auth'],
+        summary: 'Reenviar confirmação de e-mail',
+        body: {
+          type: 'object',
+          required: ['email'],
+          properties: {
+            email: { type: 'string', format: 'email' },
+          },
+        },
+        response: {
+          200: {
+            type: 'object',
+            properties: { message: { type: 'string' } },
+          },
+        },
+      },
+    },
+    async (request, reply) => {
+      const body = resendVerificationSchema.parse(request.body)
+      await resendVerificationEmail(body)
+      return reply.send({ message: 'Se a conta existir e ainda não estiver ativa, enviaremos um novo e-mail em instantes.' })
+    },
+  )
+
   fastify.post(
     '/forgot-password',
     {
