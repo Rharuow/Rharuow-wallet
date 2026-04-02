@@ -1,7 +1,7 @@
 "use client";
 
 import { Card, Button, Input, Select, Switch } from "rharuow-ds";
-import { PencilIcon, TrashIcon, CheckIcon, XIcon } from "@/components/icons";
+import { PencilIcon, TrashIcon } from "@/components/icons";
 import { displayDate, formatBRL, UNIT_LABEL } from "./types";
 import type { Income, IncomeRecurrence } from "./types";
 import type { useIncomeEdit } from "./hooks/useIncomeEdit";
@@ -13,6 +13,7 @@ interface Props {
   recurrences: IncomeRecurrence[];
   edit: EditBag;
   onDeleteRequest: (income: Income) => void;
+  canWrite?: boolean;
 }
 
 const UNIT_OPTIONS = Object.entries(UNIT_LABEL).map(([v, l]) => ({
@@ -25,6 +26,7 @@ export function IncomeMobileCard({
   recurrences,
   edit,
   onDeleteRequest,
+  canWrite = true,
 }: Props) {
   const isEditing = edit.editingId === income.id;
   const recurrence = recurrences.find((r) => r.id === income.recurrenceId);
@@ -142,22 +144,26 @@ export function IncomeMobileCard({
             </span>
           )}
         </div>
-        <div className="flex gap-1 shrink-0">
-          <Button
-            variant="icon"
-            onClick={() => edit.startEdit(income)}
-            title="Editar"
-          >
-            <PencilIcon />
-          </Button>
-          <Button
-            variant="icon"
-            onClick={() => onDeleteRequest(income)}
-            title="Remover"
-          >
-            <TrashIcon />
-          </Button>
-        </div>
+        {canWrite ? (
+          <div className="flex gap-1 shrink-0">
+            <Button
+              variant="icon"
+              onClick={() => edit.startEdit(income)}
+              title="Editar"
+            >
+              <PencilIcon />
+            </Button>
+            <Button
+              variant="icon"
+              onClick={() => onDeleteRequest(income)}
+              title="Remover"
+            >
+              <TrashIcon />
+            </Button>
+          </div>
+        ) : (
+          <span className="text-xs text-slate-400">Somente leitura</span>
+        )}
       </div>
     </Card>
   );

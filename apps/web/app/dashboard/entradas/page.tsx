@@ -1,39 +1,42 @@
+import { apiFetch } from "@/lib/api";
 import { getAuthToken } from "@/lib/auth";
 import { IncomesTable } from "./IncomesTable";
 import type { Income, IncomeRecurrence } from "./types";
+import { getWalletContext } from "@/lib/wallet";
 
 export const metadata = { title: "Entradas — RharouWallet" };
-
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001";
 const PAGE_LIMIT = 20;
 
 async function fetchIncomes(
   token: string | null,
+  walletOwnerId: string | null | undefined,
   page: number
 ): Promise<{ incomes: Income[]; total: number }> {
   if (!token) return { incomes: [], total: 0 };
-  const res = await fetch(
-    `${API_URL}/v1/incomes?page=${page}&limit=${PAGE_LIMIT}`,
+  const data = await apiFetch<{ incomes: Income[]; total: number }>(
+    `/v1/incomes?page=${page}&limit=${PAGE_LIMIT}`,
     {
-      headers: { Authorization: `Bearer ${token}` },
+      token,
+      walletOwnerId,
       cache: "no-store",
     }
   );
-  if (!res.ok) return { incomes: [], total: 0 };
-  const data = await res.json();
   return { incomes: data.incomes ?? [], total: data.total ?? 0 };
 }
 
 async function fetchRecurrences(
-  token: string | null
+  token: string | null,
+  walletOwnerId?: string | null
 ): Promise<IncomeRecurrence[]> {
   if (!token) return [];
-  const res = await fetch(`${API_URL}/v1/incomes/recurrences`, {
-    headers: { Authorization: `Bearer ${token}` },
-    cache: "no-store",
-  });
-  if (!res.ok) return [];
-  const data = await res.json();
+  const data = await apiFetch<{ recurrences: IncomeRecurrence[] }>(
+    "/v1/incomes/recurrences",
+    {
+      token,
+      walletOwnerId,
+      cache: "no-store",
+    }
+  );
   return data.recurrences ?? [];
 }
 
@@ -45,10 +48,14 @@ export default async function EntradasPage({
   const { page: pageParam } = await searchParams;
   const page = Math.max(1, parseInt(pageParam ?? "1", 10) || 1);
   const token = await getAuthToken();
+  const walletContext = await getWalletContext();
+  const walletOwnerId = walletContext?.isShared
+    ? walletContext.activeWallet.ownerId
+    : null;
 
   const [{ incomes, total }, recurrences] = await Promise.all([
-    fetchIncomes(token, page),
-    fetchRecurrences(token),
+    fetchIncomes(token, walletOwnerId, page),
+    fetchRecurrences(token, walletOwnerId),
   ]);
 
   const totalPages = Math.max(1, Math.ceil(total / PAGE_LIMIT));
@@ -69,6 +76,7 @@ export default async function EntradasPage({
         recurrences={recurrences}
         currentPage={page}
         totalPages={totalPages}
+        canWrite={walletContext?.canWrite ?? true}
       />
     </div>
   );

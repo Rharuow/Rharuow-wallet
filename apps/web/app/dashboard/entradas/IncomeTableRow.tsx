@@ -13,6 +13,7 @@ interface Props {
   recurrences: IncomeRecurrence[];
   edit: EditBag;
   onDeleteRequest: (income: Income) => void;
+  canWrite?: boolean;
 }
 
 const UNIT_OPTIONS = Object.entries(UNIT_LABEL).map(([v, l]) => ({
@@ -25,6 +26,7 @@ export function IncomeTableRow({
   recurrences,
   edit,
   onDeleteRequest,
+  canWrite = true,
 }: Props) {
   const isEditing = edit.editingId === income.id;
   const recurrence = recurrences.find((r) => r.id === income.recurrenceId);
@@ -154,22 +156,26 @@ export function IncomeTableRow({
         )}
       </Table.Cell>
       <Table.Cell align="center">
-        <div className="flex gap-1 justify-center">
-          <Button
-            variant="icon"
-            onClick={() => edit.startEdit(income)}
-            title="Editar"
-          >
-            <PencilIcon />
-          </Button>
-          <Button
-            variant="icon"
-            onClick={() => onDeleteRequest(income)}
-            title="Remover"
-          >
-            <TrashIcon />
-          </Button>
-        </div>
+        {canWrite ? (
+          <div className="flex gap-1 justify-center">
+            <Button
+              variant="icon"
+              onClick={() => edit.startEdit(income)}
+              title="Editar"
+            >
+              <PencilIcon />
+            </Button>
+            <Button
+              variant="icon"
+              onClick={() => onDeleteRequest(income)}
+              title="Remover"
+            >
+              <TrashIcon />
+            </Button>
+          </div>
+        ) : (
+          <span className="text-xs text-slate-400">Somente leitura</span>
+        )}
       </Table.Cell>
     </Table.Row>
   );

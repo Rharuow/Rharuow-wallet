@@ -41,6 +41,10 @@ const PLANS: Plan[] = [
 const FEATURES: { icon: string; text: string }[] = [
   { icon: "📈", text: "Cotações em tempo real de ações e FIIs da B3" },
   { icon: "🤖", text: "Insights financeiros gerados por IA com base nos seus dados" },
+  {
+    icon: "🤝",
+    text: "Compartilhamento de carteira (beta): convide e colabore com acesso total quando o convidado for Premium",
+  },
   { icon: "💸", text: "Controle completo de custos e receitas com análise mensal" },
   { icon: "🩺", text: "Diagnóstico de saúde financeira com indicadores objetivos" },
   { icon: "📊", text: "Gráficos de evolução, distribuição e saldo líquido do período" },

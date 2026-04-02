@@ -12,9 +12,10 @@ interface Props {
   type: CostType;
   areas: Area[];
   onDeleteRequest: (type: CostType) => void;
+  canWrite?: boolean;
 }
 
-export function TypeTableRow({ type, areas, onDeleteRequest }: Props) {
+export function TypeTableRow({ type, areas, onDeleteRequest, canWrite = true }: Props) {
   const router = useRouter();
 
   const [isEditing, setIsEditing] = useState(false);
@@ -117,18 +118,22 @@ export function TypeTableRow({ type, areas, onDeleteRequest }: Props) {
             </Button>
           </div>
         ) : (
-          <div className="flex items-center justify-center gap-2">
-            <Button variant="icon" onClick={startEdit} title="Editar tipo">
-              <PencilIcon />
-            </Button>
-            <Button
-              variant="icon"
-              onClick={() => onDeleteRequest(type)}
-              title="Remover tipo"
-            >
-              <TrashIcon />
-            </Button>
-          </div>
+          canWrite ? (
+            <div className="flex items-center justify-center gap-2">
+              <Button variant="icon" onClick={startEdit} title="Editar tipo">
+                <PencilIcon />
+              </Button>
+              <Button
+                variant="icon"
+                onClick={() => onDeleteRequest(type)}
+                title="Remover tipo"
+              >
+                <TrashIcon />
+              </Button>
+            </div>
+          ) : (
+            <span className="text-xs text-slate-400">Somente leitura</span>
+          )
         )}
       </Table.Cell>
     </Table.Row>

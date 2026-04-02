@@ -1,5 +1,7 @@
 import { cookies } from "next/headers";
 import { NextRequest, NextResponse } from "next/server";
+import { buildApiHeaders } from "@/lib/api";
+import { getRawActiveWalletOwnerId } from "@/lib/wallet";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001";
 
@@ -8,9 +10,10 @@ async function token() {
   return store.get("auth_token")?.value ?? "";
 }
 
-export async function GET(_req: NextRequest) {
+export async function GET() {
+  const walletOwnerId = await getRawActiveWalletOwnerId();
   const res = await fetch(`${API_BASE}/v1/incomes/recurrences`, {
-    headers: { Authorization: `Bearer ${await token()}` },
+    headers: buildApiHeaders({ token: await token(), walletOwnerId }),
     cache: "no-store",
   });
   const data = await res.json();
@@ -19,12 +22,10 @@ export async function GET(_req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   const body = await req.json();
+  const walletOwnerId = await getRawActiveWalletOwnerId();
   const res = await fetch(`${API_BASE}/v1/incomes/recurrences`, {
     method: "POST",
-    headers: {
-      Authorization: `Bearer ${await token()}`,
-      "Content-Type": "application/json",
-    },
+    headers: buildApiHeaders({ token: await token(), walletOwnerId }),
     body: JSON.stringify(body),
   });
   const data = await res.json();

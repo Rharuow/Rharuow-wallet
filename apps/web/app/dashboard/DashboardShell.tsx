@@ -1,10 +1,12 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { AsideSheet, Button, Accordion } from "rharuow-ds";
+import { useEffect, useState, useTransition } from "react";
+import { AsideSheet, Button, Accordion, Select, Card, Chip } from "rharuow-ds";
 import Link from "next/link";
 import Image from "next/image";
 import { usePathname, useRouter } from "next/navigation";
+import type { WalletContext } from "@/lib/wallet";
+import { NotificationBell } from "./NotificationBell";
 
 const navItems = [
   { label: "Home", href: "/dashboard" },
@@ -12,6 +14,8 @@ const navItems = [
   { label: "FIIs", href: "/dashboard/fiis" },
   { label: "Saúde Financeira 💚", href: "/dashboard/saude-financeira" },
   { label: "Premium ✨", href: "/dashboard/premium" },
+  { label: "Notificações", href: "/dashboard/notificacoes" },
+  { label: "Compartilhamento", href: "/dashboard/compartilhamento" },
 ];
 
 const costSubItems = [
@@ -26,16 +30,108 @@ const incomeSubItems = [
   { label: "Análise", href: "/dashboard/entradas/analise" },
 ];
 
+function WalletSwitcher({
+  walletContext,
+  onComplete,
+}: {
+  walletContext: WalletContext;
+  onComplete?: () => void;
+}) {
+  const router = useRouter();
+  const [isPending, startTransition] = useTransition();
+  const isSharedWallet = walletContext.activeWallet.mode === "shared";
+  const accessLabel = isSharedWallet
+    ? walletContext.activeWallet.permission === "FULL"
+      ? "Edicao"
+      : "Leitura"
+    : "Pessoal";
+
+  const options = [
+    {
+      label: `Minha carteira (${walletContext.user.name})`,
+      value: walletContext.user.id,
+    },
+    ...walletContext.sharedWallets.map((access) => ({
+      label: access.owner.name ?? access.owner.email,
+      value: access.owner.id,
+    })),
+  ];
+
+  async function handleChange(ownerId: string) {
+    const response = await fetch("/api/wallet/active", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        ownerId: ownerId === walletContext.user.id ? null : ownerId,
+      }),
+    });
+
+    if (!response.ok) {
+      return;
+    }
+
+    onComplete?.();
+
+    startTransition(() => {
+      router.refresh();
+    });
+  }
+
+  return (
+    <Card
+      variant="outlined"
+      rounded="lg"
+      className="border-slate-200/80 bg-white/90 shadow-sm"
+    >
+      <Card.Body className="space-y-2 p-2">
+        <div className="flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
+          <span
+            className={`h-2 w-2 shrink-0 rounded-full ${
+              isSharedWallet ? "bg-[var(--primary)]" : "bg-emerald-500"
+            }`}
+          />
+          <p className="min-w-0 flex-1 truncate text-sm font-semibold text-slate-700">
+            {walletContext.activeWallet.ownerName}
+          </p>
+          <Chip
+            label={accessLabel}
+            active={isSharedWallet}
+            disabled
+            className="pointer-events-none"
+          />
+        </div>
+
+        <Select
+          name="activeWallet"
+          value={walletContext.activeWallet.ownerId}
+          onChange={(e) => handleChange(e.target.value)}
+          options={options}
+          disabled={isPending}
+          containerClassName="mb-0"
+        />
+      </Card.Body>
+    </Card>
+  );
+}
+
 function NavContent({
   pathname,
+  walletContext,
   onLinkClick,
 }: {
   pathname: string;
+  walletContext: WalletContext;
   onLinkClick?: () => void;
 }) {
+  const visibleNavItems = walletContext.isShared
+    ? navItems.filter((item) =>
+        ["/dashboard", "/dashboard/compartilhamento", "/dashboard/notificacoes"].includes(item.href)
+      )
+    : navItems;
+
   return (
     <nav className="flex flex-col gap-1">
-      {navItems.map((item, index) => (
+      {visibleNavItems.map((item, index) => (
         <Link
           key={index}
           href={item.href}
@@ -57,7 +153,7 @@ function NavContent({
         className="w-full"
       >
         <Accordion.Item
-          title="Custos Domésticos"
+          title="Custos Domesticos"
           defaultOpen={pathname.startsWith("/dashboard/custos")}
           headerClassName={`rounded-lg px-4 py-3 text-sm font-medium transition-colors hover:bg-[var(--primary-light)] ${
             pathname.startsWith("/dashboard/custos")
@@ -119,14 +215,20 @@ function NavContent({
   );
 }
 
-export function DashboardShell({ children }: { children: React.ReactNode }) {
+export function DashboardShell({
+  children,
+  walletContext,
+}: {
+  children: React.ReactNode;
+  walletContext: WalletContext;
+}) {
   const [open, setOpen] = useState(false);
-  const [mounted, setMounted] = useState(false);
+  const [hasMounted, setHasMounted] = useState(false);
   const pathname = usePathname();
   const router = useRouter();
 
   useEffect(() => {
-    setMounted(true);
+    setHasMounted(true);
   }, []);
 
   async function handleLogout() {
@@ -139,11 +241,14 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
     setOpen(false);
   }
 
+  async function backToOwnWallet() {
+    await fetch("/api/wallet/active", { method: "DELETE" });
+    router.refresh();
+  }
+
   return (
     <div className="min-h-screen bg-[var(--background)]">
-
-      {/* ── Sidebar — lg+ ───────────────────────────────────────────── */}
-      <aside className="flex max-lg:![display:none] fixed inset-y-0 left-0 z-30 w-64 flex-col border-r border-slate-200 bg-[var(--background)]">
+      <aside className="fixed inset-y-0 left-0 z-30 flex w-64 flex-col border-r border-slate-200 bg-[var(--background)] max-lg:![display:none]">
         <div className="flex items-center justify-center border-b border-slate-200 px-4 py-4">
           <Image
             src="/logo.png"
@@ -156,7 +261,8 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
           />
         </div>
         <div className="flex flex-1 flex-col gap-6 overflow-y-auto px-3 py-4">
-          <NavContent pathname={pathname} />
+          <WalletSwitcher walletContext={walletContext} />
+          <NavContent pathname={pathname} walletContext={walletContext} />
         </div>
         <div className="border-t border-slate-200 px-3 py-4">
           <Button variant="outline" className="w-full" onClick={handleLogout}>
@@ -165,11 +271,8 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
         </div>
       </aside>
 
-      {/* ── Layout wrapper — offset on lg+ ──────────────────────────── */}
       <div className="lg:ml-64">
-
-        {/* Top bar — hidden on lg+ */}
-        <header className="flex lg:![display:none] items-center gap-4 border-b border-slate-200 bg-[var(--background)] px-4 py-3 shadow-sm sticky top-0">
+        <header className="sticky top-0 z-50 flex items-center gap-3 border-b border-slate-200 bg-[var(--background)] px-4 py-3 shadow-sm lg:![display:none]">
           <Button onClick={() => setOpen(true)}>☰</Button>
           <div className="grow flex justify-center">
             <Image
@@ -182,19 +285,11 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
               style={{ width: 140, height: 50 }}
             />
           </div>
-          <Button variant="outline" onClick={handleLogout}>
-            Sair
-          </Button>
+          <NotificationBell />
         </header>
 
-        {/* AsideSheet — mobile/md only, rendered after mount */}
-        {mounted && (
-          <AsideSheet
-            open={open}
-            onClose={closeSheet}
-            side="left"
-            size="sm"
-          >
+        {hasMounted ? (
+          <AsideSheet open={open} onClose={closeSheet} side="left" size="sm" className="z-100">
             <div className="flex flex-col gap-6 p-4">
               <Image
                 src="/logo.png"
@@ -205,7 +300,12 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
                 className="object-contain"
                 style={{ width: 140, height: 50 }}
               />
-              <NavContent pathname={pathname} onLinkClick={closeSheet} />
+              <WalletSwitcher walletContext={walletContext} onComplete={closeSheet} />
+              <NavContent
+                pathname={pathname}
+                walletContext={walletContext}
+                onLinkClick={closeSheet}
+              />
               <div className="mt-auto pt-4">
                 <Button
                   variant="outline"
@@ -220,10 +320,17 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
               </div>
             </div>
           </AsideSheet>
-        )}
+        ) : null}
 
-        {/* Page content */}
-        <main className="mx-auto max-w-7xl px-4 py-6">{children}</main>
+        <main className="mx-auto max-w-7xl px-4 py-6">
+          {children}
+        </main>
+      </div>
+
+      <div className="pointer-events-none fixed bottom-6 right-6 z-[50] flex max-lg:![display:none]">
+        <div className="pointer-events-auto">
+          <NotificationBell />
+        </div>
       </div>
     </div>
   );

@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Card, Button, Input, Select } from "rharuow-ds";
-import { PencilIcon, TrashIcon, CheckIcon, XIcon } from "@/components/icons";
+import { PencilIcon, TrashIcon } from "@/components/icons";
 import { CostType } from "../types";
 
 type Area = { id: string; name: string };
@@ -12,9 +12,10 @@ interface Props {
   type: CostType;
   areas: Area[];
   onDeleteRequest: (type: CostType) => void;
+  canWrite?: boolean;
 }
 
-export function TypeMobileCard({ type, areas, onDeleteRequest }: Props) {
+export function TypeMobileCard({ type, areas, onDeleteRequest, canWrite = true }: Props) {
   const router = useRouter();
 
   const [isEditing, setIsEditing] = useState(false);
@@ -110,18 +111,22 @@ export function TypeMobileCard({ type, areas, onDeleteRequest }: Props) {
           </span>
           <span className="text-sm text-slate-500">{type.area.name}</span>
         </div>
-        <div className="flex shrink-0 gap-1">
-          <Button variant="icon" onClick={startEdit} title="Editar tipo">
-            <PencilIcon />
-          </Button>
-          <Button
-            variant="icon"
-            onClick={() => onDeleteRequest(type)}
-            title="Remover tipo"
-          >
-            <TrashIcon />
-          </Button>
-        </div>
+        {canWrite ? (
+          <div className="flex shrink-0 gap-1">
+            <Button variant="icon" onClick={startEdit} title="Editar tipo">
+              <PencilIcon />
+            </Button>
+            <Button
+              variant="icon"
+              onClick={() => onDeleteRequest(type)}
+              title="Remover tipo"
+            >
+              <TrashIcon />
+            </Button>
+          </div>
+        ) : (
+          <span className="text-xs text-slate-400">Somente leitura</span>
+        )}
       </div>
     </Card>
   );

@@ -1,7 +1,7 @@
 "use client";
 
 import { Card, Button, Input, Select, Switch } from "rharuow-ds";
-import { PencilIcon, TrashIcon, CheckIcon, XIcon } from "@/components/icons";
+import { PencilIcon, TrashIcon } from "@/components/icons";
 import { formatBRL } from "@/lib/format";
 import { displayDate, UNIT_LABEL } from "./types";
 import type { Cost, CostType } from "./types";
@@ -19,9 +19,11 @@ interface Props {
   edit: EditBag;
   lists: ListsBag;
   onDeleteRequest: (cost: Cost) => void;
+  canWrite?: boolean;
 }
 
-export function CostMobileCard({ cost, localAreas, localTypes, edit, lists, onDeleteRequest }: Props) {
+export function CostMobileCard({ cost, localAreas, localTypes, edit, lists: _lists, onDeleteRequest, canWrite = true }: Props) {
+  void _lists;
   const isEditing = edit.editingId === cost.id;
 
   const costType = localTypes.find((t) => t.id === cost.costTypeId);
@@ -157,14 +159,18 @@ export function CostMobileCard({ cost, localAreas, localTypes, edit, lists, onDe
             )}
           </span>
         </div>
-        <div className="flex shrink-0 gap-1">
-          <Button variant="icon" onClick={() => edit.startEdit(cost)} title="Editar custo">
-            <PencilIcon />
-          </Button>
-          <Button variant="icon" onClick={() => onDeleteRequest(cost)} title="Remover custo">
-            <TrashIcon />
-          </Button>
-        </div>
+        {canWrite ? (
+          <div className="flex shrink-0 gap-1">
+            <Button variant="icon" onClick={() => edit.startEdit(cost)} title="Editar custo">
+              <PencilIcon />
+            </Button>
+            <Button variant="icon" onClick={() => onDeleteRequest(cost)} title="Remover custo">
+              <TrashIcon />
+            </Button>
+          </div>
+        ) : (
+          <span className="text-xs text-slate-400">Somente leitura</span>
+        )}
       </div>
     </Card>
   );

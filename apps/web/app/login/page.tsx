@@ -6,7 +6,13 @@ export const metadata = {
   description: "Acesse sua conta para gerenciar seus investimentos",
 };
 
-export default function LoginPage() {
+export default async function LoginPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ next?: string }>;
+}) {
+  const { next } = await searchParams;
+
   return (
     <main className="flex min-h-screen items-center justify-center bg-[var(--background)] px-4">
       <div className="w-full max-w-sm">
@@ -26,7 +32,7 @@ export default function LoginPage() {
           />
         </div>
 
-        <LoginForm />
+  <LoginForm nextPath={next ?? null} />
 
         <p className="mt-6 text-center text-xs text-slate-400">
           Não tem uma conta?{" "}

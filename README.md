@@ -403,7 +403,7 @@ Dono envia convite
                   │                                                            │
                   ▼                                                            ▼
         Sino de notificação acende            Convidado abre link no e-mail
-        Convidado vê convite no painel  ──────────►  /wallet/invite/[token]
+        Convidado vê convite no painel  ──────────►  /convites/[token]
                   │                                          │
                   └──────────────────┬───────────────────────┘
                                      │
@@ -467,7 +467,7 @@ Dono envia convite
 | title | String | Título curto exibido no sino |
 | body | String | Mensagem detalhada |
 | read | Boolean | `false` = não lida |
-| actionUrl | String? | Rota frontend para navegação ao clicar (ex: `/wallet/invite/:token`) |
+| actionUrl | String? | Rota frontend para navegação ao clicar (ex: `/convites/:token`) |
 | metadata | Json? | Dados extras contextuais (ex: `{ inviteId, ownerId }`) |
 | createdAt | DateTime | — |
 
@@ -548,8 +548,8 @@ Localização sugerida: `services/api/src/modules/wallet-sharing/`
    - Gerar `token` com `crypto.randomBytes(32).toString('hex')`.
    - Definir `expiresAt = now + 7 dias`.
    - Salvar `WalletInvite` com `status = PENDING`.
-   - **Canal e-mail:** enviar e-mail via `mailer` com link `{FRONTEND_URL}/wallet/invite/{token}`.
-   - **Canal in-app:** se o e-mail convidado corresponder a um `User` cadastrado, criar `Notification` do tipo `WALLET_INVITE` para esse usuário com `actionUrl = /wallet/invite/{token}` e `metadata = { inviteId, ownerName }`.
+  - **Canal e-mail:** enviar e-mail via `mailer` com link `{FRONTEND_URL}/convites/{token}`.
+  - **Canal in-app:** se o e-mail convidado corresponder a um `User` cadastrado, criar `Notification` do tipo `WALLET_INVITE` para esse usuário com `actionUrl = /convites/{token}` e `metadata = { inviteId, ownerName }`.
 
 2. **Aceite do convite (`POST /v1/wallet/invites/:token/accept`)**
    - Buscar convite pelo `token`; validar `status = PENDING` e `expiresAt > now`.
@@ -627,7 +627,7 @@ Módulos **não** expostos para usuários FREE: `portfolio`, `stocks`, `fiis`.
   - Convites `PENDING` exibem botões "Aceitar" e "Recusar" (mesma ação do sino).
   - Botão "Acessar carteira" para acessos aceitos.
 
-##### 4. Página de aceite de convite via e-mail (`/wallet/invite/[token]`)
+##### 4. Página de aceite de convite via e-mail (`/convites/[token]`)
 
 - Página pública (redireciona para login se não autenticado, preservando o token na URL de retorno).
 - Exibe: nome/e-mail do dono da carteira, nível de permissão que o convidado receberá com base no seu plano atual.
@@ -675,25 +675,342 @@ User (qualquer)
 
 ### Checklist de Implementação
 
+### Status Atual
+
+- [x] Lote 1 concluído em backend: banco, módulo `wallet-sharing`, autorização compartilhada, sync de permissão no upgrade e testes de integração.
+- [x] Lote 2 concluído: frontend MVP entregue e fluxo crítico validado com E2E dedicado de convite, troca de contexto e bloqueio pós-revogação.
+- [ ] Lote 3 pendente: notificações in-app e hardening final.
+
 #### Backend / Banco de dados
-- [ ] Criar migration com models `WalletInvite`, `WalletAccess` e `Notification` e enums `InviteStatus`, `WalletPermission` e `NotificationType`.
+- [x] Criar migration com models `WalletInvite`, `WalletAccess` e enums `InviteStatus`, `WalletPermission`.
+- [ ] Criar migration de `Notification` e enum `NotificationType`.
 - [ ] Criar módulo `notifications` com endpoints de listagem, contagem, leitura e remoção.
-- [ ] Criar módulo `wallet-sharing` com todos os endpoints listados.
-- [ ] Implementar envio de e-mail de convite via `mailer` (template novo).
+- [x] Criar módulo `wallet-sharing` com endpoints do MVP do Lote 1.
+- [x] Implementar envio de e-mail de convite via `mailer` (template novo).
 - [ ] Implementar criação de `Notification` in-app em todos os eventos do ciclo de convite (envio, aceite, recusa, revogação).
-- [ ] Implementar middleware `checkWalletAccess` e aplicar nos módulos `costs` e `incomes`.
-- [ ] Adaptar módulos `costs` e `incomes` para aceitar `ownerId` via contexto de acesso compartilhado.
-- [ ] Implementar lógica de atualização automática de permissão ao fazer upgrade de plano (hook no módulo `payments`).
-- [ ] Adicionar testes unitários e de integração para os módulos `wallet-sharing` e `notifications`.
+- [x] Implementar middleware `checkWalletAccess` e aplicar nos módulos `costs` e `incomes`.
+- [x] Adaptar módulos `costs` e `incomes` para aceitar `ownerId` via contexto de acesso compartilhado.
+- [x] Implementar lógica de atualização automática de permissão ao fazer upgrade de plano (hook no módulo `payments`).
+- [x] Adicionar testes de integração para o módulo `wallet-sharing` e os guardas de acesso compartilhado.
+- [ ] Adicionar testes para o módulo `notifications`.
 
 #### Frontend
 - [ ] Implementar componente `<NotificationBell />` com polling, drawer e ações inline de aceitar/recusar convite.
 - [ ] Criar página `/dashboard/notificacoes` com listagem paginada e filtros.
-- [ ] Criar página `/dashboard/compartilhamento` com abas de acessos concedidos e recebidos.
-- [ ] Criar página pública `/wallet/invite/[token]` para aceite/recusa via link de e-mail.
-- [ ] Implementar componente `<WalletSwitcher />` no header do dashboard.
-- [ ] Implementar contexto/estado global para `activeOwnerId` (carteira ativa).
-- [ ] Adaptar chamadas das páginas de Custos e Entradas para respeitar `activeOwnerId`.
-- [ ] Ocultar/desabilitar módulos não permitidos para convidados FREE (Ações, FIIs, Saúde Financeira).
-- [ ] Adicionar banner de contexto "Você está visualizando a carteira de X".
+- [x] Criar página `/dashboard/compartilhamento` com abas de acessos concedidos e recebidos.
+- [x] Criar página pública `/convites/[token]` para aceite/recusa via link de e-mail.
+- [x] Implementar componente `<WalletSwitcher />` no header do dashboard.
+- [x] Implementar contexto/estado global para `activeOwnerId` (carteira ativa).
+- [x] Adaptar chamadas das páginas de Custos e Entradas para respeitar `activeOwnerId`.
+- [x] Ocultar/desabilitar módulos não permitidos para convidados FREE (Ações, FIIs, Saúde Financeira).
+- [x] Adicionar banner de contexto "Você está visualizando a carteira de X".
+
+---
+
+## Recorte de MVP (Pé no Chão)
+
+Objetivo: colocar compartilhamento de carteira em produção com risco controlado, priorizando fluxo principal e segurança de autorização.
+
+### Escopo mínimo (entra no MVP)
+
+1. Convite por e-mail com token e expiração.
+2. Aceite e recusa por link (`/convites/[token]`).
+3. Criação de acesso compartilhado após aceite.
+4. Permissão baseada no plano do convidado:
+  - PREMIUM -> `FULL`.
+  - FREE -> `READ` (somente leitura em custos e entradas).
+5. Revogação imediata pelo dono.
+6. Seletor simples de carteira no dashboard (`Minha carteira` x `Carteira compartilhada`).
+7. Suporte a `ownerId` somente nos módulos `costs` e `incomes`.
+8. Atualização de permissão `READ -> FULL` no upgrade de plano (webhook Stripe).
+
+### Fora do MVP (Fase seguinte)
+
+1. NotificationBell global e unread count.
+2. Página completa de notificações com filtros e ações inline.
+3. Melhorias visuais avançadas (tempo relativo, ícones por tipo, UX refinada).
+
+### Critérios de aceite do MVP
+
+1. Dono envia convite e não consegue criar convite pendente duplicado para o mesmo e-mail.
+2. Convidado aceita com token válido e passa a enxergar a carteira do dono.
+3. Token expirado, inválido ou já usado retorna erro amigável.
+4. Convidado FREE recebe 403 em `POST/PATCH/DELETE` de custos/entradas na carteira compartilhada.
+5. Convidado PREMIUM consegue CRUD de custos/entradas na carteira compartilhada.
+6. Revogação remove acesso imediatamente e bloqueia novas leituras/escritas.
+7. Sem `ownerId` autorizado, a API retorna 403 e não vaza dados.
+8. Fluxos atuais de carteira própria continuam sem regressão.
+
+---
+
+## Plano de Entrega - Lote 1 (Banco + API + Segurança)
+
+Foco do lote: deixar o backend pronto, seguro e testado para o frontend plugar sem retrabalho.
+
+Status: concluído.
+
+### Escopo do Lote 1
+
+1. Migration Prisma:
+  - `WalletInvite`, `WalletAccess`.
+  - Enums `InviteStatus`, `WalletPermission`.
+  - Índices/constraints (`token` único e `[ownerId, guestId]` único).
+2. Módulo `wallet-sharing` com endpoints:
+  - `POST /v1/wallet/invites`
+  - `GET /v1/wallet/invites`
+  - `GET /v1/wallet/invites/received`
+  - `POST /v1/wallet/invites/:token/accept`
+  - `POST /v1/wallet/invites/:token/decline`
+  - `DELETE /v1/wallet/invites/:id`
+  - `GET /v1/wallet/accesses`
+  - `GET /v1/wallet/accesses/shared-with-me`
+3. Envio de e-mail de convite com link de aceite/recusa.
+4. Middleware `checkWalletAccess`.
+5. Adaptação de `costs` e `incomes` para `ownerId` via contexto (`X-Wallet-Owner`).
+6. Upgrade de permissão no webhook Stripe (FREE -> PREMIUM atualiza para `FULL`).
+
+### Plano de execução sugerido (ordem)
+
+1. Criar schema + migration e validar Prisma Client.
+2. Implementar camada de serviço do `wallet-sharing` com regras de domínio.
+3. Expor rotas Fastify + validações de payload/params.
+4. Integrar mailer e templates de convite.
+5. Implementar `checkWalletAccess`.
+6. Aplicar middleware em `costs` e `incomes`.
+7. Integrar atualização de permissão no webhook de pagamentos.
+8. Fechar com testes de integração e ajustes de polimento.
+
+### Testes de integração robustos (obrigatórios no Lote 1)
+
+1. `invite-create.spec`:
+  - cria convite com sucesso;
+  - bloqueia duplicado pendente (409).
+2. `invite-accept.spec`:
+  - aceita convite válido e cria `WalletAccess`;
+  - define `permission` correta por plano;
+  - bloqueia token expirado/inválido/já utilizado.
+3. `invite-decline.spec`:
+  - recusa convite e atualiza status.
+4. `invite-revoke.spec`:
+  - dono revoga e remove acesso ativo.
+5. `shared-read-write-guards.spec`:
+  - convidado FREE pode GET e não pode POST/PATCH/DELETE;
+  - convidado PREMIUM pode operações de escrita.
+6. `ownerid-forgery.spec`:
+  - usuário sem acesso tenta `X-Wallet-Owner` e recebe 403.
+7. `plan-upgrade-sync.spec`:
+  - upgrade via webhook promove `READ` para `FULL`.
+
+### Polimento mínimo (ainda no Lote 1)
+
+1. Erros padronizados com mensagens claras (`INVITE_EXPIRED`, `INVITE_ALREADY_USED`, `ACCESS_DENIED`).
+2. Logs de auditoria para eventos de convite (envio, aceite, recusa, revogação).
+3. Sanitização de e-mail e normalização para evitar duplicidade por case.
+4. Idempotência na revogação (segunda chamada não quebra fluxo).
+5. Documentação rápida de endpoints e exemplos de resposta.
+
+### Definition of Done (Lote 1)
+
+1. Endpoints do `wallet-sharing` funcionando em ambiente local.
+2. `costs` e `incomes` protegidos por autorização compartilhada.
+3. Convite por e-mail funcionando com token expirável.
+4. Upgrade de plano atualiza permissão existente.
+5. Testes de integração principais passando no CI/local.
+6. Sem regressão nos endpoints já existentes de custos e entradas.
+
+---
+
+## Plano de Entrega - Lote 2 (Frontend MVP + Integração E2E)
+
+Foco do lote: plugar o frontend ao backend do Lote 1 e entregar o fluxo ponta a ponta de compartilhamento com UX simples e consistente.
+
+Status: concluído no frontend MVP, com suíte E2E dedicada cobrindo o fluxo crítico de convite, aceite por link, troca de contexto e bloqueio pós-revogação (`L2-08`).
+
+### Escopo do Lote 2
+
+1. Página de aceite/recusa via token: `/convites/[token]`.
+2. Página de gestão de compartilhamento no dashboard: envio de convite, listagem e revogação.
+3. `WalletSwitcher` no dashboard com estado de carteira ativa (`ownerId`).
+4. Propagação de `X-Wallet-Owner` nas chamadas de `costs` e `incomes`.
+5. Restrição visual e funcional para convidado FREE (somente leitura em custos/entradas).
+6. Banner de contexto para indicar carteira ativa (dono atual selecionado).
+
+### Plano de execução sugerido (ordem)
+
+1. Implementar estado global de carteira ativa e persistência básica em sessão.
+2. Adaptar camada de API para injetar `X-Wallet-Owner` quando aplicável.
+3. Criar página `/dashboard/compartilhamento` com enviar convite/listar/revogar.
+4. Criar página `/convites/[token]` com fluxo de login e retorno.
+5. Implementar `WalletSwitcher` e banner de contexto no shell do dashboard.
+6. Aplicar bloqueios de escrita para convidado FREE nas telas de custos/entradas.
+7. Fechar com testes de integração frontend-backend e polimento de UX.
+
+### Testes de integração robustos (obrigatórios no Lote 2)
+
+Suíte implementada nesta etapa:
+
+1. `wallet-sharing.e2e`:
+  - usuário não autenticado abre o link do convite, faz login e retorna ao fluxo;
+  - aceite por link ativa a carteira compartilhada no contexto correto;
+  - alternância entre carteira compartilhada e carteira própria reflete os dados corretos;
+  - revogação pelo dono remove o acesso e bloqueia o contexto previamente ativo.
+
+2. `invite-link-flow.e2e`:
+  - usuário autenticado abre token válido e aceita convite;
+  - usuário não autenticado é redirecionado para login e retorna ao fluxo.
+3. `wallet-switcher-context.e2e`:
+  - alternar carteira muda dados de `costs` e `incomes`;
+  - voltar para "Minha carteira" restaura dados próprios.
+4. `free-readonly-ui.e2e`:
+  - convidado FREE não vê ações de escrita ou recebe bloqueio com feedback claro.
+5. `premium-write-ui.e2e`:
+  - convidado PREMIUM consegue executar escrita em custos/entradas.
+6. `revoke-live-block.e2e`:
+  - após revogação, novas chamadas da carteira compartilhada passam a falhar com 403.
+
+### Polimento mínimo (ainda no Lote 2)
+
+1. Mensagens amigáveis para token expirado/inválido/já usado.
+2. Loading e estados vazios nas páginas de convite e compartilhamento.
+3. Tratamento de erro de rede com retry manual (botão "Tentar novamente").
+4. Texto de contexto explícito: "Você está visualizando a carteira de X".
+5. Consistência visual com componentes existentes do dashboard.
+
+### Definition of Done (Lote 2)
+
+1. Fluxo completo convite -> aceite -> acesso compartilhado funcional via UI.
+2. Alternância de carteira estável com dados corretos por contexto.
+3. Regras FREE/PREMIUM refletidas na interface e confirmadas por teste.
+4. Revogação refletida no frontend sem inconsistência de estado.
+5. Testes E2E críticos passando local/CI.
+
+---
+
+## Plano de Entrega - Lote 3 (Notificações + Hardening + Polimento Final)
+
+Foco do lote: completar a experiência com notificações in-app e elevar robustez operacional antes de considerar a feature finalizada.
+
+### Escopo do Lote 3
+
+1. Model e módulo `notifications` no backend.
+2. Endpoint de listagem, contagem de não lidas, marcar lida, marcar todas e remoção.
+3. Criação de notificações para eventos do ciclo de convite (enviado, aceito, recusado, revogado).
+4. `NotificationBell` no dashboard com badge e polling.
+5. Página `/dashboard/notificacoes` com listagem e ações básicas.
+6. Hardening técnico: auditoria, observabilidade, cobertura de testes e documentação final.
+
+### Plano de execução sugerido (ordem)
+
+1. Implementar schema/serviço/rotas de notificações no backend.
+2. Integrar disparos de notificação nos eventos de `wallet-sharing`.
+3. Implementar `NotificationBell` com polling de `unread-count`.
+4. Criar página `/dashboard/notificacoes` e ações de leitura.
+5. Melhorar logs, métricas e tratamento de erros operacionais.
+6. Fechar regressão geral e documentação final.
+
+### Testes de integração robustos (obrigatórios no Lote 3)
+
+1. `notification-lifecycle.spec`:
+  - criação de notificação em eventos de convite;
+  - mudança de estado `read=false -> true`.
+2. `unread-count-consistency.spec`:
+  - contador reflete marcação individual e "marcar todas".
+3. `invite-event-notifications.spec`:
+  - dono recebe notificação em aceite/recusa;
+  - convidado recebe notificação em revogação.
+4. `notification-auth-boundary.spec`:
+  - usuário não acessa notificações de terceiros.
+5. `regression-wallet-sharing.e2e`:
+  - fluxo do Lote 2 permanece íntegro após adicionar notificações.
+
+### Polimento final (Lote 3)
+
+1. Normalização de payload de erro em todos os endpoints novos.
+2. Logs estruturados com `requestId`, `ownerId`, `guestId`, `inviteId` quando aplicável.
+3. Índices revisados para consultas de listagem e unread count.
+4. Revisão de segurança para evitar enumeração de convites/tokens.
+5. Documentação final do fluxo com exemplos de requests/responses.
+
+### Definition of Done (Lote 3)
+
+1. Notificações in-app funcionais para todo o ciclo de compartilhamento.
+2. Sino e página de notificações estáveis no frontend.
+3. Fluxos dos Lotes 1 e 2 sem regressões relevantes.
+4. Cobertura de integração/E2E consolidada para cenários críticos.
+5. Observabilidade e documentação suficientes para operação em produção.
+
+---
+
+## Backlog Executável (Lotes 1, 2 e 3)
+
+Legenda de prioridade:
+- `P0` = bloqueante para MVP.
+- `P1` = essencial para completar lote.
+- `P2` = melhoria importante, mas não bloqueante do fluxo principal.
+
+Legenda de estimativa:
+- `XS` (0,5 dia), `S` (1 dia), `M` (2 dias), `L` (3 dias).
+
+### Lote 1 - Banco + API + Segurança
+
+| Ticket | Status | Prioridade | Dependências | Estimativa | Entrega objetiva |
+|---|---|---|---|---|---|
+| `L1-01` Migration wallet sharing | Concluído | P0 | — | S | Criar `WalletInvite`, `WalletAccess`, enums e índices/constraints no Prisma |
+| `L1-02` Serviço de domínio de convites | Concluído | P0 | `L1-01` | M | Implementar regras de criar/aceitar/recusar/revogar convite com validações de status e expiração |
+| `L1-03` Rotas Fastify wallet-sharing | Concluído | P0 | `L1-02` | M | Expor endpoints do módulo com validação de payload/params e respostas padronizadas |
+| `L1-04` Mailer de convite | Concluído | P1 | `L1-03` | S | Disparar e-mail com link `/convites/:token` e template de convite |
+| `L1-05` Middleware checkWalletAccess | Concluído | P0 | `L1-02` | S | Autorizar acesso por `ownerId` e bloquear escrita quando `READ` |
+| `L1-06` Aplicar ownerId em costs | Concluído | P0 | `L1-05` | M | Adaptar rotas/serviços de custos para contexto compartilhado com `X-Wallet-Owner` |
+| `L1-07` Aplicar ownerId em incomes | Concluído | P0 | `L1-05` | M | Adaptar rotas/serviços de entradas para contexto compartilhado com `X-Wallet-Owner` |
+| `L1-08` Sync de permissão no upgrade | Concluído | P1 | `L1-01` | S | Atualizar `WalletAccess.permission` para `FULL` em upgrade FREE -> PREMIUM no webhook |
+| `L1-09` Testes integração wallet-sharing | Concluído | P0 | `L1-03`, `L1-05`, `L1-06`, `L1-07` | L | Cobrir criação, aceite, recusa, revogação, forja de ownerId e guardas READ/FULL |
+| `L1-10` Polimento e padronização de erro | Concluído | P1 | `L1-09` | S | Códigos de erro consistentes, logs de auditoria e idempotência em revogação |
+
+### Lote 2 - Frontend MVP + Integração E2E
+
+| Ticket | Status | Prioridade | Dependências | Estimativa | Entrega objetiva |
+|---|---|---|---|---|
+| `L2-01` Estado global da carteira ativa | Concluído | P0 | `L1-06`, `L1-07` | S | Criar `activeOwnerId` com persistência em sessão |
+| `L2-02` Header X-Wallet-Owner no client API | Concluído | P0 | `L2-01` | S | Injetar `X-Wallet-Owner` automaticamente nas chamadas elegíveis |
+| `L2-03` Página compartilhamento dashboard | Concluído | P0 | `L1-03`, `L2-02` | M | Tela para enviar convite, listar enviados e revogar acesso |
+| `L2-04` Página pública de convite por token | Concluído | P0 | `L1-03` | M | Implementar `/convites/[token]` com aceitar/recusar e tratamento de autenticação |
+| `L2-05` WalletSwitcher no dashboard | Concluído | P0 | `L2-01`, `L1-03` | M | Alternar entre minha carteira e carteiras compartilhadas comigo |
+| `L2-06` Banner de contexto de carteira | Concluído | P1 | `L2-05` | XS | Exibir dono ativo e ação para voltar para minha carteira |
+| `L2-07` Guardas de UI para FREE | Concluído | P0 | `L2-05`, `L1-05` | S | Bloquear ações de escrita e esconder módulos não permitidos |
+| `L2-08` E2E fluxo convite e troca de contexto | Concluído | P0 | `L2-03`, `L2-04`, `L2-05`, `L2-07` | L | Cobrir aceite por link, alternância de carteira e bloqueio pós-revogação |
+| `L2-09` Polimento UX de erro/loading | Concluído | P1 | `L2-08` | S | Estados vazios, retry e mensagens amigáveis de token |
+
+### Lote 3 - Notificações + Hardening + Polimento Final
+
+| Ticket | Prioridade | Dependências | Estimativa | Entrega objetiva |
+|---|---|---|---|---|
+| `L3-01` Migration e model de notifications | P0 | — | S | Criar model `Notification` e enum `NotificationType` |
+| `L3-02` Serviço e rotas de notifications | P0 | `L3-01` | M | Endpoints de listagem, unread-count, marcar lida, marcar todas e delete |
+| `L3-03` Emitir notificações no ciclo de convite | P0 | `L3-02`, `L1-03` | M | Criar notificações para envio, aceite, recusa e revogação |
+| `L3-04` NotificationBell no dashboard | P1 | `L3-02`, `L3-03` | M | Badge com polling e listagem resumida |
+| `L3-05` Página de notificações | P1 | `L3-02` | M | Implementar `/dashboard/notificacoes` com ações de leitura |
+| `L3-06` Integração de ações inline convite | P1 | `L3-04`, `L1-03` | S | Aceitar/recusar convite direto no painel de notificações |
+| `L3-07` Testes integração notifications | P0 | `L3-03`, `L3-05` | M | Cobrir lifecycle, unread-count e fronteira de autenticação |
+| `L3-08` Regressão E2E cross-lotes | P0 | `L3-07`, `L2-08` | M | Garantir que notificações não quebram fluxo de compartilhamento |
+| `L3-09` Hardening operacional | P1 | `L3-08` | S | Logs estruturados, revisão de índices e documentação final de operação |
+
+### Sequência recomendada para execução
+
+1. Entregar todos os `P0` do Lote 1.
+2. Fechar `L1-09` antes de iniciar telas do Lote 2.
+3. Entregar `P0` do Lote 2 e validar E2E mínimo (`L2-08`).
+4. Implementar `P0` do Lote 3 e rodar regressão cruzada (`L3-08`).
+5. Finalizar com `P1` de polimento em ordem: `L1-10` -> `L2-09` -> `L3-09`.
+
+### Marco de release (go/no-go)
+
+Release MVP aprovado quando:
+1. Todos os tickets `P0` dos Lotes 1 e 2 estão concluídos.
+2. `L1-09` e `L2-08` estão verdes no CI.
+3. Não há bug crítico aberto de autorização ou vazamento de dados.
+
+Release completo aprovado quando:
+1. Todos os tickets `P0` e `P1` dos Lotes 1, 2 e 3 estão concluídos.
+2. `L3-07` e `L3-08` estão verdes no CI.
+3. Observabilidade mínima e documentação operacional estão atualizadas.
 

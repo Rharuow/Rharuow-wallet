@@ -13,9 +13,10 @@ export type CostArea = {
 
 interface Props {
   areas: CostArea[];
+  canWrite?: boolean;
 }
 
-export function AreasTable({ areas }: Props) {
+export function AreasTable({ areas, canWrite = true }: Props) {
   const router = useRouter();
 
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -105,28 +106,34 @@ export function AreasTable({ areas }: Props) {
   return (
     <>
       {/* Card de criação */}
-      <Card className="p-4">
-        <p className="mb-3 text-sm font-medium text-[var(--foreground)]">Nova área</p>
-        <div className="flex gap-2">
-          <Input
-            name="newAreaName"
-            label="Adicione uma Área"
-            value={newName}
-            onChange={(e) => { setNewName(e.target.value); setCreateError(null); }}
-            onKeyDown={(e) => { if (e.key === "Enter") submitCreate(); }}
-            containerClassName="flex-1 mb-0"
-          />
-          <Button
-            onClick={submitCreate}
-            disabled={creating || !newName.trim()}
-          >
-            {creating ? "Adicionando…" : "Adicionar"}
-          </Button>
-        </div>
-        {createError && (
-          <p className="mt-2 text-xs text-red-500">{createError}</p>
-        )}
-      </Card>
+      {canWrite ? (
+        <Card className="p-4">
+          <p className="mb-3 text-sm font-medium text-[var(--foreground)]">Nova área</p>
+          <div className="flex gap-2">
+            <Input
+              name="newAreaName"
+              label="Adicione uma Área"
+              value={newName}
+              onChange={(e) => { setNewName(e.target.value); setCreateError(null); }}
+              onKeyDown={(e) => { if (e.key === "Enter") submitCreate(); }}
+              containerClassName="flex-1 mb-0"
+            />
+            <Button
+              onClick={submitCreate}
+              disabled={creating || !newName.trim()}
+            >
+              {creating ? "Adicionando…" : "Adicionar"}
+            </Button>
+          </div>
+          {createError && (
+            <p className="mt-2 text-xs text-red-500">{createError}</p>
+          )}
+        </Card>
+      ) : (
+        <Card className="p-4 text-sm text-slate-600">
+          Esta carteira está em modo somente leitura para o seu usuário.
+        </Card>
+      )}
 
       <Table variant="bordered" size="sm" responsive>
         <Table.Header>
@@ -206,18 +213,17 @@ export function AreasTable({ areas }: Props) {
                       {/* Editar */}
                       <Button
                         variant="icon"
-                        onClick={() => !isGlobal && startEdit(area)}
-                        disabled={isGlobal}
-                        title={isGlobal ? "Área padrão do sistema" : "Editar área"}
+                        onClick={() => canWrite && !isGlobal && startEdit(area)}
+                        disabled={isGlobal || !canWrite}
+                        title={isGlobal ? "Área padrão do sistema" : canWrite ? "Editar área" : "Somente leitura"}
                       >
                         <PencilIcon />
                       </Button>
-                      {/* Remover */}
                       <Button
                         variant="icon"
-                        onClick={() => !isGlobal && setDeleteTarget(area)}
-                        disabled={isGlobal}
-                        title={isGlobal ? "Área padrão do sistema" : "Remover área"}
+                        onClick={() => canWrite && !isGlobal && setDeleteTarget(area)}
+                        disabled={isGlobal || !canWrite}
+                        title={isGlobal ? "Área padrão do sistema" : canWrite ? "Remover área" : "Somente leitura"}
                       >
                         <TrashIcon />
                       </Button>

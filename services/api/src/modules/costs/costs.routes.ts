@@ -1,5 +1,6 @@
 import { FastifyInstance, FastifyReply } from 'fastify'
 import { authenticate } from '../../plugins/authenticate'
+import { checkWalletAccess } from '../../plugins/walletAccess'
 import {
   CreateCostAreaSchema,
   UpdateCostAreaSchema,
@@ -44,19 +45,19 @@ export async function costsRoutes(fastify: FastifyInstance) {
   // ----------------------------------------------------------------
 
   fastify.get('/areas', {
-    preHandler: authenticate,
+    preHandler: [authenticate, checkWalletAccess('read')],
     schema: {
       tags: ['Costs'],
       summary: 'Listar áreas de custo (globais + personalizadas)',
       security: [{ bearerAuth: [] }],
     },
   }, async (request, reply) => {
-    const areas = await listAreas(request.user.sub)
+    const areas = await listAreas(request.walletContext!.ownerId)
     return reply.send({ areas })
   })
 
   fastify.post('/areas', {
-    preHandler: authenticate,
+    preHandler: [authenticate, checkWalletAccess('write')],
     schema: {
       tags: ['Costs'],
       summary: 'Criar área de custo personalizada',
@@ -70,7 +71,7 @@ export async function costsRoutes(fastify: FastifyInstance) {
   }, async (request, reply) => {
     const body = CreateCostAreaSchema.parse(request.body)
     try {
-      const area = await createArea(request.user.sub, body)
+      const area = await createArea(request.walletContext!.ownerId, body)
       return reply.status(201).send({ area })
     } catch (err) {
       return handleServiceError(err, reply)
@@ -78,7 +79,7 @@ export async function costsRoutes(fastify: FastifyInstance) {
   })
 
   fastify.patch<{ Params: { id: string } }>('/areas/:id', {
-    preHandler: authenticate,
+    preHandler: [authenticate, checkWalletAccess('write')],
     schema: {
       tags: ['Costs'],
       summary: 'Atualizar área de custo personalizada',
@@ -93,7 +94,7 @@ export async function costsRoutes(fastify: FastifyInstance) {
   }, async (request, reply) => {
     const body = UpdateCostAreaSchema.parse(request.body)
     try {
-      const area = await updateArea(request.user.sub, request.params.id, body)
+      const area = await updateArea(request.walletContext!.ownerId, request.params.id, body)
       return reply.send({ area })
     } catch (err) {
       return handleServiceError(err, reply)
@@ -101,7 +102,7 @@ export async function costsRoutes(fastify: FastifyInstance) {
   })
 
   fastify.delete<{ Params: { id: string } }>('/areas/:id', {
-    preHandler: authenticate,
+    preHandler: [authenticate, checkWalletAccess('write')],
     schema: {
       tags: ['Costs'],
       summary: 'Deletar área de custo personalizada (soft delete)',
@@ -110,7 +111,7 @@ export async function costsRoutes(fastify: FastifyInstance) {
     },
   }, async (request, reply) => {
     try {
-      await softDeleteArea(request.user.sub, request.params.id)
+      await softDeleteArea(request.walletContext!.ownerId, request.params.id)
       return reply.status(204).send()
     } catch (err) {
       return handleServiceError(err, reply)
@@ -122,7 +123,7 @@ export async function costsRoutes(fastify: FastifyInstance) {
   // ----------------------------------------------------------------
 
   fastify.get<{ Querystring: { areaId?: string } }>('/types', {
-    preHandler: authenticate,
+    preHandler: [authenticate, checkWalletAccess('read')],
     schema: {
       tags: ['Costs'],
       summary: 'Listar tipos de custo do usuário',
@@ -133,12 +134,12 @@ export async function costsRoutes(fastify: FastifyInstance) {
       },
     },
   }, async (request, reply) => {
-    const types = await listTypes(request.user.sub, request.query.areaId)
+    const types = await listTypes(request.walletContext!.ownerId, request.query.areaId)
     return reply.send({ types })
   })
 
   fastify.post('/types', {
-    preHandler: authenticate,
+    preHandler: [authenticate, checkWalletAccess('write')],
     schema: {
       tags: ['Costs'],
       summary: 'Criar tipo de custo',
@@ -155,7 +156,7 @@ export async function costsRoutes(fastify: FastifyInstance) {
   }, async (request, reply) => {
     const body = CreateCostTypeSchema.parse(request.body)
     try {
-      const type = await createType(request.user.sub, body)
+      const type = await createType(request.walletContext!.ownerId, body)
       return reply.status(201).send({ type })
     } catch (err) {
       return handleServiceError(err, reply)
@@ -163,7 +164,7 @@ export async function costsRoutes(fastify: FastifyInstance) {
   })
 
   fastify.patch<{ Params: { id: string } }>('/types/:id', {
-    preHandler: authenticate,
+    preHandler: [authenticate, checkWalletAccess('write')],
     schema: {
       tags: ['Costs'],
       summary: 'Atualizar tipo de custo',
@@ -173,7 +174,7 @@ export async function costsRoutes(fastify: FastifyInstance) {
   }, async (request, reply) => {
     const body = UpdateCostTypeSchema.parse(request.body)
     try {
-      const type = await updateType(request.user.sub, request.params.id, body)
+      const type = await updateType(request.walletContext!.ownerId, request.params.id, body)
       return reply.send({ type })
     } catch (err) {
       return handleServiceError(err, reply)
@@ -181,7 +182,7 @@ export async function costsRoutes(fastify: FastifyInstance) {
   })
 
   fastify.delete<{ Params: { id: string } }>('/types/:id', {
-    preHandler: authenticate,
+    preHandler: [authenticate, checkWalletAccess('write')],
     schema: {
       tags: ['Costs'],
       summary: 'Deletar tipo de custo (soft delete — cascateia para custos e recorrências)',
@@ -190,7 +191,7 @@ export async function costsRoutes(fastify: FastifyInstance) {
     },
   }, async (request, reply) => {
     try {
-      await softDeleteType(request.user.sub, request.params.id)
+      await softDeleteType(request.walletContext!.ownerId, request.params.id)
       return reply.status(204).send()
     } catch (err) {
       return handleServiceError(err, reply)
@@ -202,19 +203,19 @@ export async function costsRoutes(fastify: FastifyInstance) {
   // ----------------------------------------------------------------
 
   fastify.get('/recurrences', {
-    preHandler: authenticate,
+    preHandler: [authenticate, checkWalletAccess('read')],
     schema: {
       tags: ['Costs'],
       summary: 'Listar regras de recorrência do usuário',
       security: [{ bearerAuth: [] }],
     },
   }, async (request, reply) => {
-    const recurrences = await listRecurrences(request.user.sub)
+    const recurrences = await listRecurrences(request.walletContext!.ownerId)
     return reply.send({ recurrences })
   })
 
   fastify.post('/recurrences', {
-    preHandler: authenticate,
+    preHandler: [authenticate, checkWalletAccess('write')],
     schema: {
       tags: ['Costs'],
       summary: 'Criar regra de recorrência',
@@ -237,7 +238,7 @@ export async function costsRoutes(fastify: FastifyInstance) {
   }, async (request, reply) => {
     const body = CreateCostRecurrenceSchema.parse(request.body)
     try {
-      const recurrence = await createRecurrence(request.user.sub, body)
+      const recurrence = await createRecurrence(request.walletContext!.ownerId, body)
       return reply.status(201).send({ recurrence })
     } catch (err) {
       return handleServiceError(err, reply)
@@ -245,7 +246,7 @@ export async function costsRoutes(fastify: FastifyInstance) {
   })
 
   fastify.patch<{ Params: { id: string } }>('/recurrences/:id', {
-    preHandler: authenticate,
+    preHandler: [authenticate, checkWalletAccess('write')],
     schema: {
       tags: ['Costs'],
       summary: 'Atualizar / pausar / retomar recorrência',
@@ -255,7 +256,7 @@ export async function costsRoutes(fastify: FastifyInstance) {
   }, async (request, reply) => {
     const body = UpdateCostRecurrenceSchema.parse(request.body)
     try {
-      const recurrence = await updateRecurrence(request.user.sub, request.params.id, body)
+      const recurrence = await updateRecurrence(request.walletContext!.ownerId, request.params.id, body)
       return reply.send({ recurrence })
     } catch (err) {
       return handleServiceError(err, reply)
@@ -263,7 +264,7 @@ export async function costsRoutes(fastify: FastifyInstance) {
   })
 
   fastify.delete<{ Params: { id: string } }>('/recurrences/:id', {
-    preHandler: authenticate,
+    preHandler: [authenticate, checkWalletAccess('write')],
     schema: {
       tags: ['Costs'],
       summary: 'Deletar recorrência (soft delete)',
@@ -272,7 +273,7 @@ export async function costsRoutes(fastify: FastifyInstance) {
     },
   }, async (request, reply) => {
     try {
-      await softDeleteRecurrence(request.user.sub, request.params.id)
+      await softDeleteRecurrence(request.walletContext!.ownerId, request.params.id)
       return reply.status(204).send()
     } catch (err) {
       return handleServiceError(err, reply)
@@ -284,7 +285,7 @@ export async function costsRoutes(fastify: FastifyInstance) {
   // ----------------------------------------------------------------
 
   fastify.get<{ Querystring: Record<string, string> }>('/', {
-    preHandler: authenticate,
+    preHandler: [authenticate, checkWalletAccess('read')],
     schema: {
       tags: ['Costs'],
       summary: 'Listar custos com filtros de data, área e tipo',
@@ -303,12 +304,12 @@ export async function costsRoutes(fastify: FastifyInstance) {
     },
   }, async (request, reply) => {
     const query = CostListQuerySchema.parse(request.query)
-    const result = await listCosts(request.user.sub, query)
+    const result = await listCosts(request.walletContext!.ownerId, query)
     return reply.send(result)
   })
 
   fastify.post('/', {
-    preHandler: authenticate,
+    preHandler: [authenticate, checkWalletAccess('write')],
     schema: {
       tags: ['Costs'],
       summary: 'Registrar custo avulso',
@@ -327,7 +328,7 @@ export async function costsRoutes(fastify: FastifyInstance) {
   }, async (request, reply) => {
     const body = CreateCostSchema.parse(request.body)
     try {
-      const cost = await createCost(request.user.sub, body)
+      const cost = await createCost(request.walletContext!.ownerId, body)
       return reply.status(201).send({ cost })
     } catch (err) {
       return handleServiceError(err, reply)
@@ -335,7 +336,7 @@ export async function costsRoutes(fastify: FastifyInstance) {
   })
 
   fastify.patch<{ Params: { id: string } }>('/:id', {
-    preHandler: authenticate,
+    preHandler: [authenticate, checkWalletAccess('write')],
     schema: {
       tags: ['Costs'],
       summary: 'Atualizar custo',
@@ -345,7 +346,7 @@ export async function costsRoutes(fastify: FastifyInstance) {
   }, async (request, reply) => {
     const body = UpdateCostSchema.parse(request.body)
     try {
-      const cost = await updateCost(request.user.sub, request.params.id, body)
+      const cost = await updateCost(request.walletContext!.ownerId, request.params.id, body)
       return reply.send({ cost })
     } catch (err) {
       return handleServiceError(err, reply)
@@ -353,7 +354,7 @@ export async function costsRoutes(fastify: FastifyInstance) {
   })
 
   fastify.delete<{ Params: { id: string } }>('/:id', {
-    preHandler: authenticate,
+    preHandler: [authenticate, checkWalletAccess('write')],
     schema: {
       tags: ['Costs'],
       summary: 'Deletar custo (soft delete)',
@@ -362,7 +363,7 @@ export async function costsRoutes(fastify: FastifyInstance) {
     },
   }, async (request, reply) => {
     try {
-      await softDeleteCost(request.user.sub, request.params.id)
+      await softDeleteCost(request.walletContext!.ownerId, request.params.id)
       return reply.status(204).send()
     } catch (err) {
       return handleServiceError(err, reply)
@@ -374,7 +375,7 @@ export async function costsRoutes(fastify: FastifyInstance) {
   // ----------------------------------------------------------------
 
   fastify.get<{ Querystring: { dateFrom: string; dateTo: string; areaId?: string; costTypeId?: string } }>('/analytics', {
-    preHandler: authenticate,
+    preHandler: [authenticate, checkWalletAccess('read')],
     schema: {
       tags: ['Costs'],
       summary: 'Análise de custos por período',
@@ -393,7 +394,7 @@ export async function costsRoutes(fastify: FastifyInstance) {
   }, async (request, reply) => {
     const query = CostAnalyticsQuerySchema.parse(request.query)
     try {
-      const analytics = await analyticsCosts(request.user.sub, query)
+      const analytics = await analyticsCosts(request.walletContext!.ownerId, query)
       return reply.send(analytics)
     } catch (err) {
       return handleServiceError(err, reply)

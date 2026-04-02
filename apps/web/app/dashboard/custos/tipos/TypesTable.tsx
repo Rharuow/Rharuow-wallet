@@ -13,15 +13,18 @@ type Area = { id: string; name: string };
 interface Props {
   types: CostType[];
   areas: Area[];
+  canWrite?: boolean;
 }
 
-export function TypesTable({ types, areas }: Props) {
+export function TypesTable({ types, areas, canWrite = true }: Props) {
   const [deleteTarget, setDeleteTarget] = useState<CostType | null>(null);
-  const [isMobile, setIsMobile] = useState(true);
+  const [isMobile, setIsMobile] = useState(() => {
+    if (typeof window === "undefined") return true;
+    return window.matchMedia("(max-width: 767px)").matches;
+  });
 
   useEffect(() => {
     const mq = window.matchMedia("(max-width: 767px)");
-    setIsMobile(mq.matches);
     const handler = (e: MediaQueryListEvent) => setIsMobile(e.matches);
     mq.addEventListener("change", handler);
     return () => mq.removeEventListener("change", handler);
@@ -29,7 +32,13 @@ export function TypesTable({ types, areas }: Props) {
 
   return (
     <>
-      <TypeCreateCard areas={areas} />
+      {canWrite ? (
+        <TypeCreateCard areas={areas} />
+      ) : (
+        <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
+          Esta carteira está em modo somente leitura para o seu usuário.
+        </div>
+      )}
 
       {/* Mobile: cards */}
       {isMobile && (
@@ -45,6 +54,7 @@ export function TypesTable({ types, areas }: Props) {
               type={type}
               areas={areas}
               onDeleteRequest={setDeleteTarget}
+              canWrite={canWrite}
             />
           ))}
         </div>
@@ -80,6 +90,7 @@ export function TypesTable({ types, areas }: Props) {
                 type={type}
                 areas={areas}
                 onDeleteRequest={setDeleteTarget}
+                canWrite={canWrite}
               />
             ))}
           </Table.Body>
