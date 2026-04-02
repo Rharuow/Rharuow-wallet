@@ -12,6 +12,8 @@
     "dev": "concurrently --kill-others-on-fail \"npm run dev:api\" \"npm run dev:web\"",
     "dev:api": "npm run dev --workspace=services/api",
     "dev:web": "npm run dev --workspace=apps/web",
+    "dev:landing": "npm run dev --workspace=apps/landing",
+    "build:landing": "npm run build --workspace=apps/landing",
     "lint": "echo \"Configure lint scripts in each package\""
   },
   "devDependencies": {
