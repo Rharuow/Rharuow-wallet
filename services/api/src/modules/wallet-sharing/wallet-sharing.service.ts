@@ -2,6 +2,8 @@ import crypto from 'node:crypto'
 import { InviteStatus, PlanType, WalletPermission } from '@prisma/client'
 import { sendWalletInviteEmail } from '../../lib/mailer'
 import { prisma } from '../../lib/prisma'
+import { createNotifications, type NotificationPayload } from '../notifications/notifications.service'
+import { NotificationType } from '@prisma/client'
 import type { CreateWalletInviteInput } from './wallet-sharing.schema'
 
 const INVITE_TTL_MS = 7 * 24 * 60 * 60 * 1000
@@ -20,6 +22,27 @@ function permissionFromPlan(planName: PlanType | null | undefined) {
 
 async function deliverInviteEmail(guestEmail: string, token: string, ownerName: string) {
   await sendWalletInviteEmail(guestEmail, token, ownerName)
+}
+
+async function emitNotificationsSafely(
+  notifications: Array<{
+    userId: string
+    type: NotificationType
+    title: string
+    message: string
+    data?: NotificationPayload
+  }>,
+) {
+  if (notifications.length === 0) return
+
+  try {
+    await createNotifications(notifications)
+  } catch (error) {
+    console.error('[notifications] emit_failed', {
+      error: error instanceof Error ? error.message : String(error),
+      notificationsCount: notifications.length,
+    })
+  }
 }
 
 async function getUserForInvite(userId: string) {
@@ -83,6 +106,25 @@ export async function createInvite(ownerId: string, data: CreateWalletInviteInpu
     })
 
     await deliverInviteEmail(refreshedInvite.guestEmail, refreshedInvite.token, owner.name ?? owner.email)
+    await emitNotificationsSafely(
+      refreshedInvite.guest?.id
+        ? [
+            {
+              userId: refreshedInvite.guest.id,
+              type: NotificationType.WALLET_INVITE_SENT,
+              title: 'Novo convite para carteira compartilhada',
+              message: `${owner.name ?? owner.email} enviou um convite para acessar uma carteira.`,
+              data: {
+                inviteId: refreshedInvite.id,
+                inviteToken: refreshedInvite.token,
+                ownerId: owner.id,
+                ownerName: owner.name,
+                ownerEmail: owner.email,
+              },
+            },
+          ]
+        : [],
+    )
     console.info('[wallet-sharing] invite.resent', {
       inviteId: refreshedInvite.id,
       ownerId,
@@ -118,6 +160,25 @@ export async function createInvite(ownerId: string, data: CreateWalletInviteInpu
   })
 
   await deliverInviteEmail(invite.guestEmail, invite.token, owner.name ?? owner.email)
+  await emitNotificationsSafely(
+    invite.guest?.id
+      ? [
+          {
+            userId: invite.guest.id,
+            type: NotificationType.WALLET_INVITE_SENT,
+            title: 'Novo convite para carteira compartilhada',
+            message: `${owner.name ?? owner.email} enviou um convite para acessar uma carteira.`,
+            data: {
+              inviteId: invite.id,
+              inviteToken: invite.token,
+              ownerId: owner.id,
+              ownerName: owner.name,
+              ownerEmail: owner.email,
+            },
+          },
+        ]
+      : [],
+  )
   console.info('[wallet-sharing] invite.created', {
     inviteId: invite.id,
     ownerId,
@@ -213,6 +274,23 @@ export async function acceptInvite(token: string, guestId: string) {
     permission,
   })
 
+  await emitNotificationsSafely([
+    {
+      userId: invite.owner.id,
+      type: NotificationType.WALLET_INVITE_ACCEPTED,
+      title: 'Convite aceito',
+      message: `${guest.name ?? guest.email} aceitou seu convite para carteira compartilhada.`,
+      data: {
+        inviteId: invite.id,
+        ownerId: invite.owner.id,
+        guestId,
+        guestName: guest.name,
+        guestEmail: guest.email,
+        permission,
+      },
+    },
+  ])
+
   return access
 }
 
@@ -242,13 +320,33 @@ export async function declineInvite(token: string, guestId: string) {
     guestId,
   })
 
+  await emitNotificationsSafely([
+    {
+      userId: invite.owner.id,
+      type: NotificationType.WALLET_INVITE_DECLINED,
+      title: 'Convite recusado',
+      message: `${guest.name ?? guest.email} recusou seu convite para carteira compartilhada.`,
+      data: {
+        inviteId: invite.id,
+        ownerId: invite.owner.id,
+        guestId,
+        guestName: guest.name,
+        guestEmail: guest.email,
+      },
+    },
+  ])
+
   return declinedInvite
 }
 
 export async function revokeInvite(ownerId: string, inviteId: string) {
   const invite = await prisma.walletInvite.findFirst({
     where: { id: inviteId, ownerId },
-    include: { access: { select: { id: true } } },
+    include: {
+      access: { select: { id: true } },
+      owner: { select: { id: true, email: true, name: true } },
+      guest: { select: { id: true, email: true, name: true } },
+    },
   })
 
   if (!invite) throw serviceError('INVITE_NOT_FOUND', 404)
@@ -269,6 +367,26 @@ export async function revokeInvite(ownerId: string, inviteId: string) {
     inviteId,
     ownerId,
   })
+
+  await emitNotificationsSafely(
+    invite.guest?.id
+      ? [
+          {
+            userId: invite.guest.id,
+            type: NotificationType.WALLET_INVITE_REVOKED,
+            title: 'Acesso revogado',
+            message: `${invite.owner.name ?? invite.owner.email} revogou seu acesso ou convite de carteira compartilhada.`,
+            data: {
+              inviteId: invite.id,
+              ownerId: invite.owner.id,
+              ownerName: invite.owner.name,
+              ownerEmail: invite.owner.email,
+              guestId: invite.guest.id,
+            },
+          },
+        ]
+      : [],
+  )
 
   return { revoked: true }
 }

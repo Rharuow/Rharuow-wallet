@@ -19,6 +19,7 @@ import { marketRoutes } from './modules/market/market.routes'
 import { paymentsRoutes } from './modules/payments/payments.routes'
 import { aiRoutes } from './modules/ai/ai.routes'
 import { walletSharingRoutes } from './modules/wallet-sharing/wallet-sharing.routes'
+import { notificationsRoutes } from './modules/notifications/notifications.routes'
 
 export async function buildServer() {
   if (!process.env.JWT_SECRET) {
@@ -95,6 +96,7 @@ export async function buildServer() {
           { name: 'Payments', description: 'Pagamento e assinaturas' },
           { name: 'AI', description: 'Insights financeiros com Inteligência Artificial' },
           { name: 'Wallet Sharing', description: 'Compartilhamento de carteira' },
+          { name: 'Notifications', description: 'Notificações in-app' },
         ],
       },
     })
@@ -121,6 +123,7 @@ export async function buildServer() {
   await server.register(paymentsRoutes, { prefix: '/v1' })
   await server.register(aiRoutes, { prefix: '/v1/ai' })
   await server.register(walletSharingRoutes, { prefix: '/v1/wallet' })
+  await server.register(notificationsRoutes, { prefix: '/v1/notifications' })
 
   server.get(
     '/health',

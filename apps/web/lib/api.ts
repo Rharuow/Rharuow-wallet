@@ -38,5 +38,14 @@ export async function apiFetch<T>(
     throw err;
   }
 
+  if (res.status === 204 || res.status === 205) {
+    return undefined as T;
+  }
+
+  const contentLength = res.headers.get("content-length");
+  if (contentLength === "0") {
+    return undefined as T;
+  }
+
   return res.json() as Promise<T>;
 }

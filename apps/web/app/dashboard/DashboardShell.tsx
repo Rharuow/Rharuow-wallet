@@ -6,6 +6,7 @@ import Link from "next/link";
 import Image from "next/image";
 import { usePathname, useRouter } from "next/navigation";
 import type { WalletContext } from "@/lib/wallet";
+import { NotificationBell } from "./NotificationBell";
 
 const navItems = [
   { label: "Home", href: "/dashboard" },
@@ -13,6 +14,7 @@ const navItems = [
   { label: "FIIs", href: "/dashboard/fiis" },
   { label: "Saúde Financeira 💚", href: "/dashboard/saude-financeira" },
   { label: "Premium ✨", href: "/dashboard/premium" },
+  { label: "Notificações", href: "/dashboard/notificacoes" },
   { label: "Compartilhamento", href: "/dashboard/compartilhamento" },
 ];
 
@@ -123,7 +125,7 @@ function NavContent({
 }) {
   const visibleNavItems = walletContext.isShared
     ? navItems.filter((item) =>
-        ["/dashboard", "/dashboard/compartilhamento"].includes(item.href)
+        ["/dashboard", "/dashboard/compartilhamento", "/dashboard/notificacoes"].includes(item.href)
       )
     : navItems;
 
@@ -270,7 +272,7 @@ export function DashboardShell({
       </aside>
 
       <div className="lg:ml-64">
-        <header className="sticky top-0 flex items-center gap-4 border-b border-slate-200 bg-[var(--background)] px-4 py-3 shadow-sm lg:![display:none] z-50">
+        <header className="sticky top-0 z-50 flex items-center gap-3 border-b border-slate-200 bg-[var(--background)] px-4 py-3 shadow-sm lg:![display:none]">
           <Button onClick={() => setOpen(true)}>☰</Button>
           <div className="grow flex justify-center">
             <Image
@@ -283,9 +285,7 @@ export function DashboardShell({
               style={{ width: 140, height: 50 }}
             />
           </div>
-          <Button variant="outline" onClick={handleLogout}>
-            Sair
-          </Button>
+          <NotificationBell />
         </header>
 
         {hasMounted ? (
@@ -325,6 +325,12 @@ export function DashboardShell({
         <main className="mx-auto max-w-7xl px-4 py-6">
           {children}
         </main>
+      </div>
+
+      <div className="pointer-events-none fixed bottom-6 right-6 z-[50] flex max-lg:![display:none]">
+        <div className="pointer-events-auto">
+          <NotificationBell />
+        </div>
       </div>
     </div>
   );

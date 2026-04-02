@@ -678,7 +678,7 @@ User (qualquer)
 ### Status Atual
 
 - [x] Lote 1 concluído em backend: banco, módulo `wallet-sharing`, autorização compartilhada, sync de permissão no upgrade e testes de integração.
-- [x] Lote 2 implementado no frontend MVP: fluxo por token, gestão de compartilhamento, wallet switcher, contexto ativo e guardas visuais de permissão.
+- [x] Lote 2 concluído: frontend MVP entregue e fluxo crítico validado com E2E dedicado de convite, troca de contexto e bloqueio pós-revogação.
 - [ ] Lote 3 pendente: notificações in-app e hardening final.
 
 #### Backend / Banco de dados
@@ -824,7 +824,7 @@ Status: concluído.
 
 Foco do lote: plugar o frontend ao backend do Lote 1 e entregar o fluxo ponta a ponta de compartilhamento com UX simples e consistente.
 
-Status: implementado no frontend MVP, com pendência de suíte E2E dedicada (`L2-08`).
+Status: concluído no frontend MVP, com suíte E2E dedicada cobrindo o fluxo crítico de convite, aceite por link, troca de contexto e bloqueio pós-revogação (`L2-08`).
 
 ### Escopo do Lote 2
 
@@ -847,17 +847,25 @@ Status: implementado no frontend MVP, com pendência de suíte E2E dedicada (`L2
 
 ### Testes de integração robustos (obrigatórios no Lote 2)
 
-1. `invite-link-flow.e2e`:
+Suíte implementada nesta etapa:
+
+1. `wallet-sharing.e2e`:
+  - usuário não autenticado abre o link do convite, faz login e retorna ao fluxo;
+  - aceite por link ativa a carteira compartilhada no contexto correto;
+  - alternância entre carteira compartilhada e carteira própria reflete os dados corretos;
+  - revogação pelo dono remove o acesso e bloqueia o contexto previamente ativo.
+
+2. `invite-link-flow.e2e`:
   - usuário autenticado abre token válido e aceita convite;
   - usuário não autenticado é redirecionado para login e retorna ao fluxo.
-2. `wallet-switcher-context.e2e`:
+3. `wallet-switcher-context.e2e`:
   - alternar carteira muda dados de `costs` e `incomes`;
   - voltar para "Minha carteira" restaura dados próprios.
-3. `free-readonly-ui.e2e`:
+4. `free-readonly-ui.e2e`:
   - convidado FREE não vê ações de escrita ou recebe bloqueio com feedback claro.
-4. `premium-write-ui.e2e`:
+5. `premium-write-ui.e2e`:
   - convidado PREMIUM consegue executar escrita em custos/entradas.
-5. `revoke-live-block.e2e`:
+6. `revoke-live-block.e2e`:
   - após revogação, novas chamadas da carteira compartilhada passam a falhar com 403.
 
 ### Polimento mínimo (ainda no Lote 2)
@@ -969,7 +977,7 @@ Legenda de estimativa:
 | `L2-05` WalletSwitcher no dashboard | Concluído | P0 | `L2-01`, `L1-03` | M | Alternar entre minha carteira e carteiras compartilhadas comigo |
 | `L2-06` Banner de contexto de carteira | Concluído | P1 | `L2-05` | XS | Exibir dono ativo e ação para voltar para minha carteira |
 | `L2-07` Guardas de UI para FREE | Concluído | P0 | `L2-05`, `L1-05` | S | Bloquear ações de escrita e esconder módulos não permitidos |
-| `L2-08` E2E fluxo convite e troca de contexto | Pendente | P0 | `L2-03`, `L2-04`, `L2-05`, `L2-07` | L | Cobrir aceite por link, alternância de carteira e bloqueio pós-revogação |
+| `L2-08` E2E fluxo convite e troca de contexto | Concluído | P0 | `L2-03`, `L2-04`, `L2-05`, `L2-07` | L | Cobrir aceite por link, alternância de carteira e bloqueio pós-revogação |
 | `L2-09` Polimento UX de erro/loading | Concluído | P1 | `L2-08` | S | Estados vazios, retry e mensagens amigáveis de token |
 
 ### Lote 3 - Notificações + Hardening + Polimento Final
