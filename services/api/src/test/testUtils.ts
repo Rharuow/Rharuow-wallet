@@ -32,7 +32,27 @@ export async function cleanupTestData() {
   })
   const userIds = users.map((user) => user.id)
 
+  await prisma.userAssetReportAccess.deleteMany({})
+  await prisma.assetReportAnalysis.deleteMany({})
+  await prisma.assetReportSource.deleteMany({})
+
   if (userIds.length > 0) {
+    await prisma.creditLedgerEntry.deleteMany({
+      where: { userId: { in: userIds } },
+    })
+
+    await prisma.creditTopupOrder.deleteMany({
+      where: { userId: { in: userIds } },
+    })
+
+    await prisma.userCreditBalance.deleteMany({
+      where: { userId: { in: userIds } },
+    })
+
+    await prisma.notification.deleteMany({
+      where: { userId: { in: userIds } },
+    })
+
     await prisma.walletAccess.deleteMany({
       where: {
         OR: [

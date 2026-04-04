@@ -42,6 +42,7 @@ export async function walletSharingRoutes(fastify: FastifyInstance) {
       const invite = await createInvite(request.user.sub, body)
       return reply.status(201).send({ invite })
     } catch (err) {
+      request.log.error({ err, requestId: request.id, ownerId: request.user.sub, guestEmail: body.guestEmail }, 'wallet_sharing.create_invite_failed')
       return handleServiceError(err, reply)
     }
   })
@@ -88,11 +89,7 @@ export async function walletSharingRoutes(fastify: FastifyInstance) {
       const access = await acceptInvite(params.token, request.user.sub)
       return reply.send({ access })
     } catch (err) {
-      console.error('[wallet-sharing] acceptInvite error:', {
-        error: err instanceof Error ? err.message : String(err),
-        stack: err instanceof Error ? err.stack : undefined,
-        statusCode: (err as { statusCode?: number }).statusCode,
-      })
+      request.log.error({ err, requestId: request.id, guestId: request.user.sub, inviteToken: params.token }, 'wallet_sharing.accept_invite_failed')
       return handleServiceError(err, reply)
     }
   })
@@ -115,6 +112,7 @@ export async function walletSharingRoutes(fastify: FastifyInstance) {
       const invite = await declineInvite(params.token, request.user.sub)
       return reply.send({ invite })
     } catch (err) {
+      request.log.error({ err, requestId: request.id, guestId: request.user.sub, inviteToken: params.token }, 'wallet_sharing.decline_invite_failed')
       return handleServiceError(err, reply)
     }
   })
@@ -137,6 +135,7 @@ export async function walletSharingRoutes(fastify: FastifyInstance) {
       await revokeInvite(request.user.sub, params.id)
       return reply.status(204).send()
     } catch (err) {
+      request.log.error({ err, requestId: request.id, ownerId: request.user.sub, inviteId: params.id }, 'wallet_sharing.revoke_invite_failed')
       return handleServiceError(err, reply)
     }
   })

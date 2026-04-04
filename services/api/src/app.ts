@@ -20,6 +20,8 @@ import { paymentsRoutes } from './modules/payments/payments.routes'
 import { aiRoutes } from './modules/ai/ai.routes'
 import { walletSharingRoutes } from './modules/wallet-sharing/wallet-sharing.routes'
 import { notificationsRoutes } from './modules/notifications/notifications.routes'
+import { creditsRoutes } from './modules/credits/credits.routes'
+import { reportsRoutes } from './modules/reports/reports.routes'
 
 export async function buildServer() {
   if (!process.env.JWT_SECRET) {
@@ -94,6 +96,8 @@ export async function buildServer() {
           { name: 'Incomes', description: 'Gestão de entradas (receitas)' },
           { name: 'Market', description: 'Visão geral do mercado (USD, EUR, BTC, Ibovespa)' },
           { name: 'Payments', description: 'Pagamento e assinaturas' },
+          { name: 'Credits', description: 'Carteira de creditos e recargas' },
+          { name: 'Reports', description: 'Relatórios on-demand e acesso temporário' },
           { name: 'AI', description: 'Insights financeiros com Inteligência Artificial' },
           { name: 'Wallet Sharing', description: 'Compartilhamento de carteira' },
           { name: 'Notifications', description: 'Notificações in-app' },
@@ -121,6 +125,8 @@ export async function buildServer() {
   await server.register(incomesRoutes, { prefix: '/v1/incomes' })
   await server.register(marketRoutes, { prefix: '/v1' })
   await server.register(paymentsRoutes, { prefix: '/v1' })
+  await server.register(creditsRoutes, { prefix: '/v1/credits' })
+  await server.register(reportsRoutes, { prefix: '/v1/reports' })
   await server.register(aiRoutes, { prefix: '/v1/ai' })
   await server.register(walletSharingRoutes, { prefix: '/v1/wallet' })
   await server.register(notificationsRoutes, { prefix: '/v1/notifications' })

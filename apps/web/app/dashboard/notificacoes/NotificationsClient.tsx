@@ -1,24 +1,75 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
-import { Button, Card, useToast } from "rharuow-ds";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { Button, Card, Pagination as DSPagination, Select, useToast } from "rharuow-ds";
 import {
   formatNotificationDate,
   notificationActionLabel,
+  notificationStatusOptions,
+  notificationTypeOptions,
   type NotificationItem,
+  type NotificationStatusFilter,
+  type NotificationType,
 } from "@/lib/notifications";
 
 type Props = {
   notifications: NotificationItem[];
   unreadCount: number;
+  total: number;
+  currentPage: number;
+  totalPages: number;
+  selectedStatus: NotificationStatusFilter;
+  selectedType?: NotificationType;
 };
 
-export function NotificationsClient({ notifications, unreadCount }: Props) {
+export function NotificationsClient({
+  notifications,
+  unreadCount,
+  total,
+  currentPage,
+  totalPages,
+  selectedStatus,
+  selectedType,
+}: Props) {
   const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
   const toast = useToast();
   const [actingId, setActingId] = useState<string | null>(null);
   const [bulkLoading, setBulkLoading] = useState(false);
+
+  function updateQuery(updates: Record<string, string | null>, resetPage = true) {
+    const params = new URLSearchParams(searchParams.toString());
+
+    if (resetPage) {
+      params.set("page", "1");
+    }
+
+    for (const [key, value] of Object.entries(updates)) {
+      if (!value || value === "all") {
+        params.delete(key);
+        continue;
+      }
+
+      params.set(key, value);
+    }
+
+    const query = params.toString();
+    router.push(query ? `${pathname}?${query}` : pathname);
+  }
+
+  function handleStatusChange(value: string) {
+    updateQuery({ status: value });
+  }
+
+  function handleTypeChange(value: string) {
+    updateQuery({ type: value || null });
+  }
+
+  function goToPage(page: number) {
+    updateQuery({ page: String(page) }, false);
+  }
 
   async function markAsRead(notificationId: string) {
     setActingId(notificationId);
@@ -125,10 +176,29 @@ export function NotificationsClient({ notifications, unreadCount }: Props) {
               ? `${unreadCount} notificação(ões) não lidas.`
               : "Você está em dia com as notificações."}
           </p>
+          <p className="mt-1 text-xs text-slate-400">{total} resultado(s) no filtro atual.</p>
         </div>
         <Button variant="outline" onClick={markAllAsRead} disabled={bulkLoading || unreadCount === 0}>
           {bulkLoading ? "Marcando..." : "Marcar todas como lidas"}
         </Button>
+      </div>
+
+      <div className="grid gap-3 sm:grid-cols-2 lg:max-w-xl">
+        <Select
+          name="notificationStatus"
+          label="Status"
+          value={selectedStatus}
+          onChange={(e) => handleStatusChange(e.target.value)}
+          options={notificationStatusOptions}
+        />
+        <Select
+          name="notificationType"
+          label="Tipo"
+          isClearable
+          value={selectedType ?? ""}
+          onChange={(e) => handleTypeChange(e.target.value)}
+          options={notificationTypeOptions}
+        />
       </div>
 
       <div className="space-y-4">
@@ -203,6 +273,12 @@ export function NotificationsClient({ notifications, unreadCount }: Props) {
           ))
         )}
       </div>
+
+      {totalPages > 1 ? (
+        <div className="pt-2">
+          <DSPagination currentPage={currentPage} totalPages={totalPages} onPageChange={goToPage} />
+        </div>
+      ) : null}
     </div>
   );
 }

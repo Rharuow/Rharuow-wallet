@@ -33,6 +33,30 @@ enum NotificationType {
   WALLET_INVITE_REVOKED
 }
 
+enum CreditLedgerEntryKind {
+  CREDIT
+  DEBIT
+  REVERSAL
+  ADJUSTMENT
+}
+
+enum CreditTopupOrderStatus {
+  PENDING
+  PAID
+  FAILED
+  CANCELED
+}
+
+enum AssetReportAssetType {
+  STOCK
+  FII
+}
+
+enum AssetReportSourceKind {
+  AUTO_FOUND
+  MANUAL_UPLOAD
+}
+
 model Plan {
   id          String   @id @default(cuid())
   name        PlanType @unique
@@ -86,8 +110,113 @@ model User {
   walletAccessesOwned    WalletAccess[]      @relation("WalletAccessOwner")
   walletAccessesGranted  WalletAccess[]      @relation("WalletAccessGuest")
   notifications          Notification[]
+  creditBalance          UserCreditBalance?
+  creditLedgerEntries    CreditLedgerEntry[]
+  creditTopupOrders      CreditTopupOrder[]
+  assetReportAccesses    UserAssetReportAccess[]
 
   @@map("users")
+}
+
+model UserCreditBalance {
+  id        String   @id @default(cuid())
+  userId    String   @unique @map("user_id")
+  balance   Decimal  @default(0)
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("user_credit_balances")
+}
+
+model CreditTopupOrder {
+  id                    String                 @id @default(cuid())
+  userId                String                 @map("user_id")
+  amount                Decimal
+  status                CreditTopupOrderStatus @default(PENDING)
+  stripeCheckoutSessionId String?              @unique @map("stripe_checkout_session_id")
+  stripePaymentIntentId String?                @unique @map("stripe_payment_intent_id")
+  metadata              Json?
+  paidAt                DateTime?              @map("paid_at")
+  createdAt             DateTime               @default(now()) @map("created_at")
+  updatedAt             DateTime               @updatedAt @map("updated_at")
+  user                  User                   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  ledgerEntries         CreditLedgerEntry[]
+
+  @@index([userId, status, createdAt])
+  @@map("credit_topup_orders")
+}
+
+model CreditLedgerEntry {
+  id           String                @id @default(cuid())
+  userId       String                @map("user_id")
+  topupOrderId String?               @map("topup_order_id")
+  kind         CreditLedgerEntryKind
+  amount       Decimal
+  balanceAfter Decimal               @map("balance_after")
+  description  String?
+  metadata     Json?
+  createdAt    DateTime              @default(now()) @map("created_at")
+  user         User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  topupOrder   CreditTopupOrder?     @relation(fields: [topupOrderId], references: [id], onDelete: SetNull)
+
+  @@index([userId, createdAt])
+  @@index([topupOrderId])
+  @@map("credit_ledger_entries")
+}
+
+model AssetReportSource {
+  id                  String               @id @default(cuid())
+  assetType           AssetReportAssetType @map("asset_type")
+  ticker              String
+  sourceKind          AssetReportSourceKind @map("source_kind")
+  sourceUrl           String?              @map("source_url")
+  storageKey          String?              @map("storage_key")
+  originalFileName    String?              @map("original_file_name")
+  documentFingerprint String               @map("document_fingerprint")
+  metadata            Json?
+  createdAt           DateTime             @default(now()) @map("created_at")
+  updatedAt           DateTime             @updatedAt @map("updated_at")
+  analyses            AssetReportAnalysis[]
+
+  @@unique([assetType, ticker, documentFingerprint])
+  @@index([assetType, ticker, createdAt])
+  @@map("asset_report_sources")
+}
+
+model AssetReportAnalysis {
+  id            String                @id @default(cuid())
+  assetType     AssetReportAssetType  @map("asset_type")
+  ticker        String
+  sourceId      String                @map("source_id")
+  analysisText  String                @map("analysis_text")
+  model         String
+  validUntil    DateTime              @map("valid_until")
+  metadata      Json?
+  createdAt     DateTime              @default(now()) @map("created_at")
+  updatedAt     DateTime              @updatedAt @map("updated_at")
+  source        AssetReportSource     @relation(fields: [sourceId], references: [id], onDelete: Cascade)
+  accesses      UserAssetReportAccess[]
+
+  @@unique([assetType, ticker, sourceId])
+  @@index([assetType, ticker, validUntil])
+  @@map("asset_report_analyses")
+}
+
+model UserAssetReportAccess {
+  id          String              @id @default(cuid())
+  userId      String              @map("user_id")
+  analysisId  String              @map("analysis_id")
+  expiresAt   DateTime            @map("expires_at")
+  createdAt   DateTime            @default(now()) @map("created_at")
+  updatedAt   DateTime            @updatedAt @map("updated_at")
+  user        User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  analysis    AssetReportAnalysis @relation(fields: [analysisId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, analysisId])
+  @@index([userId, expiresAt])
+  @@index([analysisId, expiresAt])
+  @@map("user_asset_report_accesses")
 }
 
 model Notification {

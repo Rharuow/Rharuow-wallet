@@ -8,19 +8,13 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "Não autenticado" }, { status: 401 });
   }
 
-  const searchParams = req.nextUrl.searchParams;
-  const page = searchParams.get("page") ?? "1";
-  const limit = searchParams.get("limit") ?? "20";
-  const unreadOnly = searchParams.get("unreadOnly") ?? "false";
+  const queryString = req.nextUrl.searchParams.toString();
 
   try {
-    const data = await apiFetch(
-      `/v1/notifications?page=${page}&limit=${limit}&unreadOnly=${unreadOnly}`,
-      {
-        token,
-        cache: "no-store",
-      }
-    );
+    const data = await apiFetch(`/v1/notifications${queryString ? `?${queryString}` : ""}`, {
+      token,
+      cache: "no-store",
+    });
     return NextResponse.json(data);
   } catch (err: unknown) {
     const status = (err as { status?: number }).status ?? 500;

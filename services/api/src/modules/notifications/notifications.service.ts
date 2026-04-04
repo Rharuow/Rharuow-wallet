@@ -59,9 +59,14 @@ export async function createNotifications(
 export async function listNotifications(userId: string, query: NotificationsQuery) {
   const page = query.page
   const limit = query.limit
-  const where = {
+  const where: Prisma.NotificationWhereInput = {
     userId,
-    ...(query.unreadOnly ? { readAt: null } : {}),
+    ...(query.type ? { type: query.type } : {}),
+    ...(query.status === 'unread'
+      ? { readAt: null }
+      : query.status === 'read'
+        ? { readAt: { not: null } }
+        : {}),
   }
 
   const [notifications, total, unreadCount] = await Promise.all([

@@ -12,6 +12,8 @@ const navItems = [
   { label: "Home", href: "/dashboard" },
   { label: "Ações", href: "/dashboard/acoes" },
   { label: "FIIs", href: "/dashboard/fiis" },
+  { label: "Créditos", href: "/dashboard/creditos" },
+  { label: "Relatórios", href: "/dashboard/relatorios" },
   { label: "Saúde Financeira 💚", href: "/dashboard/saude-financeira" },
   { label: "Premium ✨", href: "/dashboard/premium" },
   { label: "Notificações", href: "/dashboard/notificacoes" },
@@ -239,11 +241,6 @@ export function DashboardShell({
   function closeSheet() {
     (document.activeElement as HTMLElement)?.blur();
     setOpen(false);
-  }
-
-  async function backToOwnWallet() {
-    await fetch("/api/wallet/active", { method: "DELETE" });
-    router.refresh();
   }
 
   return (

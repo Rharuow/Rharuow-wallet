@@ -1,3 +1,4 @@
+import { NotificationType } from '@prisma/client'
 import { FastifyInstance, FastifyReply } from 'fastify'
 import { authenticate } from '../../plugins/authenticate'
 import { NotificationIdParamsSchema, NotificationsQuerySchema } from './notifications.schema'
@@ -26,6 +27,8 @@ export async function notificationsRoutes(fastify: FastifyInstance) {
         properties: {
           page: { type: 'integer', minimum: 1 },
           limit: { type: 'integer', minimum: 1, maximum: 50 },
+          type: { type: 'string', enum: Object.values(NotificationType) },
+          status: { type: 'string', enum: ['all', 'read', 'unread'] },
           unreadOnly: { type: 'boolean' },
         },
       },
@@ -66,6 +69,7 @@ export async function notificationsRoutes(fastify: FastifyInstance) {
       const notification = await markNotificationAsRead(request.user.sub, params.id)
       return reply.send({ notification })
     } catch (err) {
+      request.log.error({ err, requestId: request.id, userId: request.user.sub, notificationId: params.id }, 'notifications.mark_read_failed')
       return handleServiceError(err, reply)
     }
   })
@@ -100,6 +104,7 @@ export async function notificationsRoutes(fastify: FastifyInstance) {
       await deleteNotification(request.user.sub, params.id)
       return reply.status(204).send()
     } catch (err) {
+      request.log.error({ err, requestId: request.id, userId: request.user.sub, notificationId: params.id }, 'notifications.delete_failed')
       return handleServiceError(err, reply)
     }
   })
