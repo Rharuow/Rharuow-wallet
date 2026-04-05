@@ -1,16 +1,23 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Button, Card, Input, Select, useToast } from "rharuow-ds";
 
 type AssetType = "STOCK" | "FII";
 
-type AnalysisResponse = {
-  outcome: "ACTIVE_ACCESS" | "REUSED" | "GENERATED";
-  chargedAmount: string;
-  plan: "FREE" | "PREMIUM";
-  balance: { id: string; balance: string; updatedAt: string };
+type RequestMode = "AUTO_WEB" | "MANUAL_UPLOAD";
+
+type ReportJobStatus =
+  | "QUEUED"
+  | "SEARCHING_REPORT"
+  | "VALIDATING_REPORT"
+  | "ANALYZING_REPORT"
+  | "COMPLETED"
+  | "SEARCH_UNAVAILABLE"
+  | "FAILED";
+
+type ReportAnalysisPayload = {
   access: { id: string; expiresAt: string };
   analysis: {
     id: string;
@@ -27,6 +34,33 @@ type AnalysisResponse = {
     };
   };
 };
+
+type ReportJob = {
+  id: string;
+  userId: string;
+  assetType: AssetType;
+  ticker: string;
+  requestMode: RequestMode;
+  status: ReportJobStatus;
+  attemptCount: number;
+  failureCode: string | null;
+  failureMessage: string | null;
+  priceCharged: string | null;
+  analysisId: string | null;
+  sourceId: string | null;
+  lockedAt: string | null;
+  startedAt: string | null;
+  finishedAt: string | null;
+  metadata: Record<string, unknown> | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+const terminalStatuses = new Set<ReportJobStatus>([
+  "COMPLETED",
+  "FAILED",
+  "SEARCH_UNAVAILABLE",
+]);
 
 const assetTypeOptions = [
   { label: "Ação", value: "STOCK" },
@@ -57,8 +91,16 @@ function errorMessageForCode(error?: string) {
     return "Você não tem créditos suficientes para continuar essa análise.";
   }
 
+  if (error === "REPORT_AUTO_SEARCH_COOLDOWN_ACTIVE") {
+    return "Esse ticker está temporariamente indisponível para nova busca automática. Você ainda pode enviar um arquivo manual.";
+  }
+
   if (error === "REPORT_SOURCE_NOT_FOUND") {
     return "Não encontramos um relatório automaticamente para esse ticker. Se quiser, você pode enviar um arquivo logo abaixo.";
+  }
+
+  if (error === "REPORT_SOURCE_MANUAL_ASSET_MISMATCH") {
+    return "O arquivo enviado não parece pertencer ao ticker informado. Revise o documento e tente novamente.";
   }
 
   if (error === "REPORT_SOURCE_MANUAL_UNSUPPORTED_FILE") {
@@ -80,6 +122,46 @@ function errorMessageForCode(error?: string) {
   return error ?? "Não foi possível concluir a análise agora.";
 }
 
+function isTerminalJob(status: ReportJobStatus) {
+  return terminalStatuses.has(status);
+}
+
+function formatJobStatus(status: ReportJobStatus) {
+  if (status === "QUEUED") return "Na fila";
+  if (status === "SEARCHING_REPORT") return "Buscando relatório";
+  if (status === "VALIDATING_REPORT") return "Validando documento";
+  if (status === "ANALYZING_REPORT") return "Gerando análise";
+  if (status === "COMPLETED") return "Concluído";
+  if (status === "SEARCH_UNAVAILABLE") return "Busca indisponível";
+  return "Falhou";
+}
+
+function statusToneClass(status: ReportJobStatus) {
+  if (status === "COMPLETED") return "border-emerald-200 bg-emerald-50 text-emerald-700";
+  if (status === "FAILED" || status === "SEARCH_UNAVAILABLE") return "border-red-200 bg-red-50 text-red-700";
+  return "border-amber-200 bg-amber-50 text-amber-800";
+}
+
+function formatRequestMode(mode: RequestMode) {
+  return mode === "MANUAL_UPLOAD" ? "Upload manual" : "Busca automática";
+}
+
+function mergeJobs(current: ReportJob[], incoming: ReportJob[]) {
+  const byId = new Map<string, ReportJob>();
+
+  for (const job of current) {
+    byId.set(job.id, job);
+  }
+
+  for (const job of incoming) {
+    byId.set(job.id, job);
+  }
+
+  return Array.from(byId.values()).sort(
+    (left, right) => new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime(),
+  );
+}
+
 async function fileToBase64(file: File) {
   const bytes = new Uint8Array(await file.arrayBuffer());
   const chunkSize = 0x8000;
@@ -98,7 +180,7 @@ export function OnDemandReportCard({
   initialTicker = "",
   editable = false,
   title = "Relatório on-demand",
-  subtitle = "Busca automática do documento-base, reuso inteligente e acesso por 30 dias.",
+  subtitle = "Busca automática do documento-base, reuso inteligente e acesso por 30 dias, com cobrança apenas em sucesso final.",
 }: {
   initialAssetType?: AssetType;
   initialTicker?: string;
@@ -110,54 +192,199 @@ export function OnDemandReportCard({
   const [assetType, setAssetType] = useState<AssetType>(initialAssetType);
   const [ticker, setTicker] = useState(initialTicker);
   const [pendingAction, setPendingAction] = useState<"auto" | "manual" | null>(null);
-  const [result, setResult] = useState<AnalysisResponse | null>(null);
+  const [currentJob, setCurrentJob] = useState<ReportJob | null>(null);
+  const [jobHistory, setJobHistory] = useState<ReportJob[]>([]);
+  const [analysisResult, setAnalysisResult] = useState<ReportAnalysisPayload | null>(null);
   const [lastError, setLastError] = useState<string | null>(null);
   const [manualFile, setManualFile] = useState<File | null>(null);
+  const [isLoadingHistory, setIsLoadingHistory] = useState(true);
+  const completionToastJobIdRef = useRef<string | null>(null);
+  const loadedAnalysisJobIdRef = useRef<string | null>(null);
 
   const loading = pendingAction !== null;
 
   const bullets = useMemo(() => {
-    if (!result?.analysis.analysisText) return [];
+    if (!analysisResult?.analysis.analysisText) return [];
 
-    return result.analysis.analysisText
+    return analysisResult.analysis.analysisText
       .split("\n")
       .map((line) => line.trim())
       .filter((line) => line.startsWith("•") || line.startsWith("-"))
       .map((line) => line.slice(1).trim());
-  }, [result]);
+  }, [analysisResult]);
 
-  async function submitAnalysis(options: {
+  useEffect(() => {
+    let ignore = false;
+
+    async function loadJobHistory() {
+      try {
+        const response = await fetch("/api/reports/jobs", { cache: "no-store" });
+        const data = (await response.json().catch(() => ({}))) as { jobs?: ReportJob[]; error?: string };
+
+        if (!response.ok) {
+          if (!ignore) {
+            setIsLoadingHistory(false);
+          }
+          return;
+        }
+
+        if (ignore) {
+          return;
+        }
+
+        const jobs = data.jobs ?? [];
+        setJobHistory(jobs);
+        setCurrentJob((previous) => {
+          if (previous) {
+            return jobs.find((job) => job.id === previous.id) ?? previous;
+          }
+
+          return jobs.find((job) => !isTerminalJob(job.status)) ?? jobs[0] ?? null;
+        });
+      } finally {
+        if (!ignore) {
+          setIsLoadingHistory(false);
+        }
+      }
+    }
+
+    void loadJobHistory();
+
+    return () => {
+      ignore = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!currentJob || isTerminalJob(currentJob.status)) {
+      return;
+    }
+
+    const timeoutId = window.setTimeout(async () => {
+      try {
+        const response = await fetch(`/api/reports/jobs/${currentJob.id}`, { cache: "no-store" });
+        const data = (await response.json().catch(() => ({}))) as { job?: ReportJob; error?: string };
+
+        if (!response.ok || !data.job) {
+          return;
+        }
+
+        setCurrentJob(data.job);
+        setJobHistory((previous) => mergeJobs(previous, [data.job!]));
+      } catch {
+        return;
+      }
+    }, 2500);
+
+    return () => {
+      window.clearTimeout(timeoutId);
+    };
+  }, [currentJob]);
+
+  useEffect(() => {
+    if (!currentJob || !isTerminalJob(currentJob.status)) {
+      return;
+    }
+
+    const job = currentJob;
+
+    if (job.status === "COMPLETED" && job.analysisId) {
+      if (loadedAnalysisJobIdRef.current === job.id) {
+        return;
+      }
+
+      let ignore = false;
+
+      async function loadAnalysis() {
+        const response = await fetch(`/api/reports/analysis/${job.analysisId}`, {
+          cache: "no-store",
+        });
+        const data = (await response.json().catch(() => ({}))) as Partial<ReportAnalysisPayload> & {
+          error?: string;
+        };
+
+        if (!response.ok) {
+          if (!ignore) {
+            const message = errorMessageForCode(data.error);
+            setLastError(message);
+            toast.error(message);
+          }
+          return;
+        }
+
+        if (ignore) {
+          return;
+        }
+
+        loadedAnalysisJobIdRef.current = job.id;
+        setAnalysisResult(data as ReportAnalysisPayload);
+        setLastError(null);
+
+        if (completionToastJobIdRef.current !== job.id) {
+          completionToastJobIdRef.current = job.id;
+          toast.success("Análise concluída e leitura liberada.");
+        }
+      }
+
+      void loadAnalysis();
+
+      return () => {
+        ignore = true;
+      };
+    }
+
+    if (job.status !== "COMPLETED" && completionToastJobIdRef.current !== job.id) {
+      completionToastJobIdRef.current = job.id;
+      const message = errorMessageForCode(job.failureCode ?? job.failureMessage ?? undefined);
+      setLastError(message);
+      setAnalysisResult(null);
+      toast.error(message);
+    }
+  }, [currentJob, toast]);
+
+  async function submitJob(options: {
     path: string;
     payload: Record<string, unknown>;
     action: "auto" | "manual";
   }) {
     setPendingAction(options.action);
     setLastError(null);
+    setAnalysisResult(null);
     try {
       const response = await fetch(options.path, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(options.payload),
       });
-      const data = (await response.json().catch(() => ({}))) as Partial<AnalysisResponse> & {
+      const data = (await response.json().catch(() => ({}))) as {
+        job?: ReportJob;
         error?: string;
+        blockedUntil?: string;
       };
 
       if (!response.ok) {
-        const errorMessage = errorMessageForCode(data.error);
+        const cooldownSuffix = data.blockedUntil
+          ? ` Tente novamente após ${formatDate(data.blockedUntil)}.`
+          : "";
+        const errorMessage = `${errorMessageForCode(data.error)}${cooldownSuffix}`;
         setLastError(errorMessage);
         toast.error(errorMessage);
         return;
       }
 
-      setResult(data as AnalysisResponse);
+      if (!data.job) {
+        throw new Error("JOB_NOT_CREATED");
+      }
+
+      loadedAnalysisJobIdRef.current = null;
+      completionToastJobIdRef.current = null;
+      setCurrentJob(data.job);
+      setJobHistory((previous) => mergeJobs(previous, [data.job!]));
       setTicker(((options.payload.ticker as string | undefined) ?? ticker).trim().toUpperCase());
       toast.success(
-        data.outcome === "ACTIVE_ACCESS"
-          ? "Essa análise já está disponível para você"
-          : data.outcome === "REUSED"
-            ? "Encontramos uma análise pronta para você"
-            : "Sua análise foi gerada com sucesso"
+        options.action === "manual"
+          ? "Upload recebido. Vamos validar e processar o relatório."
+          : "Solicitação recebida. O relatório entrou na fila de processamento."
       );
     } catch {
       const message = "Não foi possível se conectar ao servidor agora.";
@@ -168,6 +395,32 @@ export function OnDemandReportCard({
     }
   }
 
+  async function inspectJob(job: ReportJob) {
+    setCurrentJob(job);
+    setLastError(null);
+
+    if (!job.analysisId || job.status !== "COMPLETED") {
+      setAnalysisResult(null);
+      return;
+    }
+
+    loadedAnalysisJobIdRef.current = null;
+    const response = await fetch(`/api/reports/analysis/${job.analysisId}`, { cache: "no-store" });
+    const data = (await response.json().catch(() => ({}))) as Partial<ReportAnalysisPayload> & {
+      error?: string;
+    };
+
+    if (!response.ok) {
+      const message = errorMessageForCode(data.error);
+      setLastError(message);
+      toast.error(message);
+      return;
+    }
+
+    loadedAnalysisJobIdRef.current = job.id;
+    setAnalysisResult(data as ReportAnalysisPayload);
+  }
+
   async function handleAnalyze() {
     const normalizedTicker = ticker.trim().toUpperCase();
     if (!normalizedTicker) {
@@ -175,8 +428,8 @@ export function OnDemandReportCard({
       return;
     }
 
-    await submitAnalysis({
-      path: "/api/reports/analysis",
+    await submitJob({
+      path: "/api/reports/jobs",
       payload: { assetType, ticker: normalizedTicker },
       action: "auto",
     });
@@ -195,10 +448,9 @@ export function OnDemandReportCard({
     }
 
     const fileBase64 = await fileToBase64(manualFile);
-    await submitAnalysis({
-      path: "/api/reports/analysis",
+    await submitJob({
+      path: "/api/reports/jobs/manual",
       payload: {
-        manualUpload: true,
         assetType,
         ticker: normalizedTicker,
         originalFileName: manualFile.name,
@@ -220,7 +472,7 @@ export function OnDemandReportCard({
 
       <Card.Body className="space-y-4">
         <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-          Cobrança por sucesso: Free {formatCurrency("2.5")} e Premium {formatCurrency("1.5")}. Se o relatório não for encontrado ou a geração falhar, não há débito.
+          Cobrança apenas em sucesso final. Se a busca falhar ou o processamento não concluir, nenhum crédito é debitado.
         </div>
 
         <div className={`grid gap-3 ${editable ? "md:grid-cols-[160px_minmax(0,1fr)_auto]" : "md:grid-cols-[minmax(0,1fr)_auto]"}`}>
@@ -245,7 +497,13 @@ export function OnDemandReportCard({
 
           <div className="flex items-end">
             <Button onClick={handleAnalyze} disabled={loading}>
-              {pendingAction === "auto" ? "Analisando…" : result ? "Atualizar análise" : "Desbloquear análise"}
+              {pendingAction === "auto"
+                ? "Enfileirando…"
+                : currentJob && !isTerminalJob(currentJob.status)
+                  ? "Criar outro job"
+                  : analysisResult
+                    ? "Solicitar nova análise"
+                    : "Criar job de análise"}
             </Button>
           </div>
         </div>
@@ -254,7 +512,7 @@ export function OnDemandReportCard({
           <div className="space-y-1">
             <p className="text-sm font-semibold text-[var(--foreground)]">Enviar relatório do seu computador</p>
             <p className="text-sm text-slate-500">
-              Se não encontrarmos um relatório automaticamente, você pode enviar um arquivo para continuar a análise.
+              Se a busca automática não resolver o documento-base, você pode enviar um arquivo manual e acompanhar o processamento separadamente.
             </p>
           </div>
 
@@ -280,31 +538,70 @@ export function OnDemandReportCard({
 
             <div className="flex items-end">
               <Button onClick={handleManualUpload} disabled={loading || !manualFile}>
-                {pendingAction === "manual" ? "Enviando arquivo…" : "Analisar com arquivo enviado"}
+                {pendingAction === "manual"
+                  ? "Enviando arquivo…"
+                  : currentJob && !isTerminalJob(currentJob.status)
+                    ? "Criar job manual"
+                    : "Criar job com arquivo"}
               </Button>
             </div>
           </div>
         </div>
 
-        {result ? (
+        {currentJob ? (
+          <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div className="space-y-1">
+                <p className="text-sm font-semibold text-[var(--foreground)]">
+                  Job atual · {currentJob.ticker} · {currentJob.assetType === "FII" ? "FII" : "Ação"}
+                </p>
+                <p className="text-xs text-slate-500">
+                  {formatRequestMode(currentJob.requestMode)} · criado em {formatDate(currentJob.createdAt)}
+                </p>
+              </div>
+              <span className={`inline-flex rounded-full border px-3 py-1 text-xs font-semibold ${statusToneClass(currentJob.status)}`}>
+                {formatJobStatus(currentJob.status)}
+              </span>
+            </div>
+
+            <div className="mt-4 grid gap-3 md:grid-cols-3">
+              <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3">
+                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Status</p>
+                <p className="mt-1 text-sm font-semibold text-[var(--foreground)]">{formatJobStatus(currentJob.status)}</p>
+              </div>
+              <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3">
+                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Cobrança</p>
+                <p className="mt-1 text-sm font-semibold text-[var(--foreground)]">
+                  {currentJob.priceCharged ? formatCurrency(currentJob.priceCharged) : "Somente em sucesso"}
+                </p>
+              </div>
+              <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3">
+                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Tentativas</p>
+                <p className="mt-1 text-sm font-semibold text-[var(--foreground)]">{currentJob.attemptCount}</p>
+              </div>
+            </div>
+
+            {currentJob.status !== "COMPLETED" ? (
+              <p className="mt-4 text-sm text-slate-500">
+                A leitura do relatório só é liberada quando o job atingir o estado <span className="font-semibold text-[var(--foreground)]">Concluído</span>.
+              </p>
+            ) : null}
+          </div>
+        ) : null}
+
+        {analysisResult ? (
           <div className="grid gap-3 md:grid-cols-3">
             <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
-              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Resultado</p>
-              <p className="mt-1 text-sm font-semibold text-[var(--foreground)]">
-                {result.outcome === "ACTIVE_ACCESS"
-                  ? "Acesso ativo"
-                  : result.outcome === "REUSED"
-                    ? "Análise reaproveitada"
-                    : "Análise gerada"}
-              </p>
+              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Leitura</p>
+              <p className="mt-1 text-sm font-semibold text-[var(--foreground)]">Liberada</p>
             </div>
             <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
-              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Cobrança</p>
-              <p className="mt-1 text-sm font-semibold text-[var(--foreground)]">{formatCurrency(result.chargedAmount)}</p>
+              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Acesso até</p>
+              <p className="mt-1 text-sm font-semibold text-[var(--foreground)]">{formatDate(analysisResult.access.expiresAt)}</p>
             </div>
             <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
-              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Saldo atual</p>
-              <p className="mt-1 text-sm font-semibold text-[var(--foreground)]">{formatCurrency(result.balance.balance)}</p>
+              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Validade da análise</p>
+              <p className="mt-1 text-sm font-semibold text-[var(--foreground)]">{formatDate(analysisResult.analysis.validUntil)}</p>
             </div>
           </div>
         ) : null}
@@ -320,19 +617,55 @@ export function OnDemandReportCard({
           </div>
         ) : null}
 
-        {result ? (
+        {jobHistory.length > 0 ? (
+          <div className="rounded-2xl border border-slate-200 bg-white p-4">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <p className="text-sm font-semibold text-[var(--foreground)]">Jobs recentes</p>
+                <p className="text-sm text-slate-500">Acompanhe o andamento e reabra uma análise já concluída.</p>
+              </div>
+              {isLoadingHistory ? <span className="text-xs text-slate-400">Atualizando…</span> : null}
+            </div>
+
+            <div className="mt-4 space-y-3">
+              {jobHistory.slice(0, 6).map((job) => (
+                <div key={job.id} className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
+                  <div className="space-y-1">
+                    <p className="text-sm font-semibold text-[var(--foreground)]">
+                      {job.ticker} · {job.assetType === "FII" ? "FII" : "Ação"}
+                    </p>
+                    <p className="text-xs text-slate-500">
+                      {formatRequestMode(job.requestMode)} · {formatDate(job.createdAt)}
+                    </p>
+                  </div>
+
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className={`inline-flex rounded-full border px-3 py-1 text-xs font-semibold ${statusToneClass(job.status)}`}>
+                      {formatJobStatus(job.status)}
+                    </span>
+                    <Button variant="outline" onClick={() => void inspectJob(job)}>
+                      {job.analysisId && job.status === "COMPLETED" ? "Abrir análise" : "Ver status"}
+                    </Button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        ) : null}
+
+        {analysisResult ? (
           <div className="rounded-2xl border border-slate-200 bg-[var(--background-secondary)] p-5">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
                 <p className="text-sm font-semibold text-[var(--foreground)]">
-                  {result.analysis.ticker} · {result.analysis.assetType === "FII" ? "FII" : "Ação"}
+                  {analysisResult.analysis.ticker} · {analysisResult.analysis.assetType === "FII" ? "FII" : "Ação"}
                 </p>
                 <p className="text-xs text-slate-500">
-                  Acesso liberado até {formatDate(result.access.expiresAt)} · validade da análise até {formatDate(result.analysis.validUntil)}
+                  Acesso liberado até {formatDate(analysisResult.access.expiresAt)} · validade da análise até {formatDate(analysisResult.analysis.validUntil)}
                 </p>
                 <p className="text-xs text-slate-500">
-                  {result.analysis.source.sourceKind === "MANUAL_UPLOAD"
-                    ? `Origem manual: ${result.analysis.source.originalFileName ?? "arquivo enviado"}`
+                  {analysisResult.analysis.source.sourceKind === "MANUAL_UPLOAD"
+                    ? `Origem manual: ${analysisResult.analysis.source.originalFileName ?? "arquivo enviado"}`
                     : "Origem automática por ticker"}
                 </p>
               </div>
@@ -344,19 +677,19 @@ export function OnDemandReportCard({
             {bullets.length > 0 ? (
               <ul className="mt-4 flex flex-col gap-3">
                 {bullets.map((bullet, index) => (
-                  <li key={`${result.analysis.id}-${index}`} className="flex gap-2 text-sm text-[var(--foreground)]">
+                  <li key={`${analysisResult.analysis.id}-${index}`} className="flex gap-2 text-sm text-[var(--foreground)]">
                     <span className="mt-0.5 shrink-0 text-[var(--primary)]">•</span>
                     <span>{bullet}</span>
                   </li>
                 ))}
               </ul>
             ) : (
-              <pre className="mt-4 whitespace-pre-wrap text-sm text-[var(--foreground)]">{result.analysis.analysisText}</pre>
+              <pre className="mt-4 whitespace-pre-wrap text-sm text-[var(--foreground)]">{analysisResult.analysis.analysisText}</pre>
             )}
           </div>
         ) : (
           <p className="text-sm text-slate-500">
-            Busque por ticker para localizar o documento-base, reutilizar análises existentes quando possível e liberar acesso por 30 dias. Se a origem automática falhar, use o upload manual.
+            Crie um job por ticker para localizar o documento-base e acompanhe o status até a conclusão. Se a origem automática falhar, use o upload manual.
           </p>
         )}
       </Card.Body>

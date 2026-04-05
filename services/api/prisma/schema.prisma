@@ -57,6 +57,25 @@ enum AssetReportSourceKind {
   MANUAL_UPLOAD
 }
 
+enum ReportAnalysisRequestMode {
+  AUTO_WEB
+  MANUAL_UPLOAD
+}
+
+enum ReportAnalysisJobStatus {
+  QUEUED
+  SEARCHING_REPORT
+  VALIDATING_REPORT
+  ANALYZING_REPORT
+  COMPLETED
+  SEARCH_UNAVAILABLE
+  FAILED
+}
+
+enum ReportSearchCooldownSource {
+  AUTO_WEB
+}
+
 model Plan {
   id          String   @id @default(cuid())
   name        PlanType @unique
@@ -114,6 +133,7 @@ model User {
   creditLedgerEntries    CreditLedgerEntry[]
   creditTopupOrders      CreditTopupOrder[]
   assetReportAccesses    UserAssetReportAccess[]
+  reportAnalysisJobs     ReportAnalysisJob[]
 
   @@map("users")
 }
@@ -178,6 +198,7 @@ model AssetReportSource {
   createdAt           DateTime             @default(now()) @map("created_at")
   updatedAt           DateTime             @updatedAt @map("updated_at")
   analyses            AssetReportAnalysis[]
+  reportJobs          ReportAnalysisJob[]
 
   @@unique([assetType, ticker, documentFingerprint])
   @@index([assetType, ticker, createdAt])
@@ -197,6 +218,7 @@ model AssetReportAnalysis {
   updatedAt     DateTime              @updatedAt @map("updated_at")
   source        AssetReportSource     @relation(fields: [sourceId], references: [id], onDelete: Cascade)
   accesses      UserAssetReportAccess[]
+  reportJobs    ReportAnalysisJob[]
 
   @@unique([assetType, ticker, sourceId])
   @@index([assetType, ticker, validUntil])
@@ -217,6 +239,57 @@ model UserAssetReportAccess {
   @@index([userId, expiresAt])
   @@index([analysisId, expiresAt])
   @@map("user_asset_report_accesses")
+}
+
+model ReportAnalysisJob {
+  id             String                    @id @default(cuid())
+  userId         String                    @map("user_id")
+  assetType      AssetReportAssetType      @map("asset_type")
+  ticker         String
+  requestMode    ReportAnalysisRequestMode @map("request_mode")
+  status         ReportAnalysisJobStatus   @default(QUEUED)
+  priceCharged   Decimal?                  @map("price_charged")
+  analysisId     String?                   @map("analysis_id")
+  sourceId       String?                   @map("source_id")
+  failureCode    String?                   @map("failure_code")
+  failureMessage String?                   @map("failure_message")
+  attemptCount   Int                       @default(0) @map("attempt_count")
+  lockedAt       DateTime?                 @map("locked_at")
+  startedAt      DateTime?                 @map("started_at")
+  finishedAt     DateTime?                 @map("finished_at")
+  metadata       Json?
+  createdAt      DateTime                  @default(now()) @map("created_at")
+  updatedAt      DateTime                  @updatedAt @map("updated_at")
+  user           User                      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  analysis       AssetReportAnalysis?      @relation(fields: [analysisId], references: [id], onDelete: SetNull)
+  source         AssetReportSource?        @relation(fields: [sourceId], references: [id], onDelete: SetNull)
+  cooldowns      ReportSearchCooldown[]
+
+  @@index([userId, createdAt])
+  @@index([assetType, ticker, requestMode, createdAt])
+  @@index([status, createdAt])
+  @@index([analysisId])
+  @@index([sourceId])
+  @@map("report_analysis_jobs")
+}
+
+model ReportSearchCooldown {
+  id          String                     @id @default(cuid())
+  assetType   AssetReportAssetType       @map("asset_type")
+  ticker      String
+  source      ReportSearchCooldownSource
+  reasonCode  String                     @map("reason_code")
+  blockedUntil DateTime                  @map("blocked_until")
+  lastJobId   String?                    @map("last_job_id")
+  metadata    Json?
+  createdAt   DateTime                   @default(now()) @map("created_at")
+  updatedAt   DateTime                   @updatedAt @map("updated_at")
+  lastJob     ReportAnalysisJob?         @relation(fields: [lastJobId], references: [id], onDelete: SetNull)
+
+  @@unique([assetType, ticker, source])
+  @@index([blockedUntil])
+  @@index([lastJobId])
+  @@map("report_search_cooldowns")
 }
 
 model Notification {

@@ -151,7 +151,7 @@ export function CreditsClient() {
             </div>
 
             <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
-              Free paga {formatCurrency(2.5)} por análise concluída. Premium paga {formatCurrency(1.5)}. Falhas antes da geração e relatório não encontrado não consomem saldo.
+              Análises on-demand consomem créditos apenas quando o processamento conclui com sucesso. Falhas antes da geração e relatório não encontrado não consomem saldo.
             </div>
           </Card.Body>
         </Card>

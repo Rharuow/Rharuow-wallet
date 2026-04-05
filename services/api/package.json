@@ -4,8 +4,10 @@
   "private": true,
   "scripts": {
     "dev": "tsx watch src/index.ts",
+    "dev:worker:reports": "tsx watch src/workers/report-analysis-worker.ts",
     "build": "tsc -p tsconfig.json",
     "start": "node dist/index.js",
+    "start:worker:reports": "node dist/workers/report-analysis-worker.js",
     "test:integration": "NODE_ENV=test JWT_SECRET=test-secret MAILER_DISABLE_SEND=true zsh -c 'for file in src/test/*.test.ts; do node --import tsx --test \"$file\" || exit 1; done'",
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate dev",

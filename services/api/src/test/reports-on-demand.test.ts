@@ -193,6 +193,44 @@ test('reports-on-demand.spec: não cobra quando o relatório não é encontrado 
   assert.equal(ledger.filter((entry) => entry.kind === 'DEBIT').length, 0)
 })
 
+test('reports-on-demand.spec: usa fallback de busca web controlada quando fonte local nao existe', async () => {
+  const user = await createTestUser({ name: 'Web Search User', plan: PlanType.FREE })
+  await seedCredits(user.id, 5, 'web-search')
+  const missingTicker = 'ZZZZ3'
+
+  let webSearchCalls = 0
+  const result = await createOnDemandReportAnalysis({
+    userId: user.id,
+    assetType: AssetReportAssetType.STOCK,
+    ticker: missingTicker,
+  }, {
+    resolveWebSearchSource: async () => {
+      webSearchCalls += 1
+      return {
+        assetType: AssetReportAssetType.STOCK,
+        ticker: missingTicker,
+        sourceKind: 'AUTO_FOUND' as const,
+        sourceUrl: 'https://example.com/zzzz3-web-report',
+        documentFingerprint: 'fp-zzzz3-web-v1',
+        metadata: {
+          discoveryMethod: 'OPENAI_WEB_SEARCH',
+          summary: 'Resumo encontrado em busca web controlada.',
+        },
+        promptContext: 'Resumo encontrado em busca web controlada.',
+      }
+    },
+    generateAnalysis: async () => '• web 1\n• web 2\n• web 3\n• web 4\n• web 5',
+    now: () => new Date('2026-04-04T12:00:00.000Z'),
+  })
+
+  assert.equal(result.outcome, 'GENERATED')
+  assert.equal(result.chargedAmount, '2.5')
+  assert.equal(webSearchCalls, 1)
+  assert.equal(result.analysis.source.sourceUrl, 'https://example.com/zzzz3-web-report')
+  const metadata = result.analysis.source.metadata as { discoveryMethod?: string } | null
+  assert.equal(metadata?.discoveryMethod, 'OPENAI_WEB_SEARCH')
+})
+
 test('reports-on-demand.spec: upload manual gera análise, reaproveita fingerprint e não cobra arquivo inválido', async () => {
   const freeUser = await createTestUser({ name: 'Manual Free', plan: PlanType.FREE })
   const premiumUser = await createTestUser({ name: 'Manual Premium', plan: PlanType.PREMIUM })
@@ -256,6 +294,29 @@ test('reports-on-demand.spec: upload manual gera análise, reaproveita fingerpri
     },
   )
 
+  await assert.rejects(
+    () => createManualReportAnalysis({
+      userId: premiumUser.id,
+      assetType: AssetReportAssetType.STOCK,
+      ticker: 'PETR4',
+      originalFileName: 'vale3-relatorio.txt',
+      contentType: 'text/plain',
+      fileBase64: Buffer.from(
+        'Relatorio fundamentalista da companhia VALE3 com destaque para mineracao, curva de custos, geracao de caixa e riscos de preco do minerio de ferro ao longo do ciclo.',
+        'utf8',
+      ).toString('base64'),
+    }, runtime),
+    (error: unknown) => {
+      const err = error as Error & { statusCode?: number }
+      assert.equal(err.message, 'REPORT_SOURCE_MANUAL_ASSET_MISMATCH')
+      assert.equal(err.statusCode, 422)
+      return true
+    },
+  )
+
   const premiumBalance = await getCreditBalance(premiumUser.id)
   assert.equal(new Prisma.Decimal(premiumBalance.balance).toFixed(2), '4.50')
+
+  const premiumLedger = await listCreditLedger(premiumUser.id)
+  assert.equal(premiumLedger.filter((entry) => entry.kind === 'DEBIT').length, 1)
 })

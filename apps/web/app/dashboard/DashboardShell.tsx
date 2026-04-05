@@ -257,8 +257,10 @@ export function DashboardShell({
             style={{ width: 140, height: 50 }}
           />
         </div>
-        <div className="flex flex-1 flex-col gap-6 overflow-y-auto px-3 py-4">
+        <div className="border-b border-slate-200 px-3 py-4">
           <WalletSwitcher walletContext={walletContext} />
+        </div>
+        <div className="flex-1 overflow-y-auto px-3 py-4">
           <NavContent pathname={pathname} walletContext={walletContext} />
         </div>
         <div className="border-t border-slate-200 px-3 py-4">
@@ -287,23 +289,32 @@ export function DashboardShell({
 
         {hasMounted ? (
           <AsideSheet open={open} onClose={closeSheet} side="left" size="sm" className="z-100">
-            <div className="flex flex-col gap-6 p-4">
-              <Image
-                src="/logo.png"
-                alt="RharouWallet"
-                loading="eager"
-                width={140}
-                height={50}
-                className="object-contain"
-                style={{ width: 140, height: 50 }}
-              />
-              <WalletSwitcher walletContext={walletContext} onComplete={closeSheet} />
-              <NavContent
-                pathname={pathname}
-                walletContext={walletContext}
-                onLinkClick={closeSheet}
-              />
-              <div className="mt-auto pt-4">
+            <div className="flex h-full min-h-0 flex-col overflow-hidden">
+              <div className="border-b border-slate-200 px-4 py-4">
+                <Image
+                  src="/logo.png"
+                  alt="RharouWallet"
+                  loading="eager"
+                  width={140}
+                  height={50}
+                  className="object-contain"
+                  style={{ width: 140, height: 50 }}
+                />
+              </div>
+
+              <div className="border-b border-slate-200 px-4 py-4">
+                <WalletSwitcher walletContext={walletContext} onComplete={closeSheet} />
+              </div>
+
+              <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4">
+                <NavContent
+                  pathname={pathname}
+                  walletContext={walletContext}
+                  onLinkClick={closeSheet}
+                />
+              </div>
+
+              <div className="border-t border-slate-200 px-4 py-4">
                 <Button
                   variant="outline"
                   className="w-full"

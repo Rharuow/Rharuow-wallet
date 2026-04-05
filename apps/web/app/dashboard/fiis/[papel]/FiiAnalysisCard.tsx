@@ -1,5 +1,6 @@
 "use client";
 
+import { AiAnalysisCard } from "@/components/AiAnalysisCard";
 import { OnDemandReportCard } from "@/components/OnDemandReportCard";
 
 interface Props {
@@ -8,11 +9,19 @@ interface Props {
 
 export function FiiAnalysisCard({ papel }: Props) {
   return (
-    <OnDemandReportCard
-      initialAssetType="FII"
-      initialTicker={papel}
-      title="Relatório on-demand do FII"
-      subtitle="Localiza a melhor base disponível para o fundo e libera a leitura por 30 dias quando houver sucesso."
-    />
+    <div className="space-y-4">
+      <AiAnalysisCard
+        path="/api/ai/fii-analysis"
+        payload={{ papel }}
+        feature="A análise com IA do FII"
+      />
+
+      <OnDemandReportCard
+        initialAssetType="FII"
+        initialTicker={papel}
+        title="Relatório on-demand do FII"
+        subtitle="Localiza a melhor base disponível para o fundo e libera a leitura por 30 dias quando houver sucesso."
+      />
+    </div>
   );
 }

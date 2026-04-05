@@ -1,4 +1,5 @@
 import crypto from 'node:crypto'
+import path from 'node:path'
 import OpenAI from 'openai'
 import { PDFParse } from 'pdf-parse'
 import {
@@ -8,6 +9,7 @@ import {
   PlanType,
   Prisma,
 } from '@prisma/client'
+import { getObject, putObject } from '../../lib/object-storage'
 import { prisma } from '../../lib/prisma'
 import { getCreditBalance } from '../credits/credits.service'
 import { getFii } from '../fiis/fiis.service'
@@ -53,6 +55,10 @@ type ReportRuntime = {
     assetType: AssetReportAssetType
     ticker: string
   }) => Promise<ResolvedReportSource | null>
+  resolveWebSearchSource?: (input: {
+    assetType: AssetReportAssetType
+    ticker: string
+  }) => Promise<ResolvedReportSource | null>
   generateAnalysis?: (input: {
     assetType: AssetReportAssetType
     ticker: string
@@ -79,6 +85,36 @@ function hashFingerprint(payload: unknown) {
 
 function hashText(value: string) {
   return crypto.createHash('sha256').update(value).digest('hex')
+}
+
+function normalizeSearchText(value: string) {
+  return value
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toUpperCase()
+    .replace(/[^A-Z0-9]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+function hasExactToken(text: string, token: string) {
+  const normalizedText = ` ${normalizeSearchText(text)} `
+  const normalizedToken = normalizeSearchText(token)
+
+  if (!normalizedToken) {
+    return false
+  }
+
+  return normalizedText.includes(` ${normalizedToken} `)
+}
+
+function hasStrongAliasMatch(text: string, alias: string) {
+  const normalizedAlias = normalizeSearchText(alias)
+  if (normalizedAlias.length < 6) {
+    return false
+  }
+
+  return normalizeSearchText(text).includes(normalizedAlias)
 }
 
 function formatCurrency(value: number | null | undefined) {
@@ -132,17 +168,149 @@ async function resolveFiiAutoSource(ticker: string): Promise<ResolvedReportSourc
   }
 }
 
-async function defaultResolveAutoSource(input: {
+function buildWebSearchPrompt(input: {
+  assetType: AssetReportAssetType
+  ticker: string
+}) {
+  const assetLabel = input.assetType === AssetReportAssetType.FII ? 'FII brasileiro' : 'acao brasileira listada na B3'
+
+  return [
+    'Encontre uma fonte publica confiavel e recente para analise fundamentalista do ativo abaixo.',
+    `Ticker: ${input.ticker}`,
+    `Tipo: ${assetLabel}`,
+    'Responda apenas em JSON valido sem markdown.',
+    'Campos esperados:',
+    '{',
+    '  "found": boolean,',
+    '  "sourceUrl": string | null,',
+    '  "title": string | null,',
+    '  "summary": string | null,',
+    '  "publisher": string | null',
+    '}',
+    'Se nao encontrar fonte util, retorne found=false e os demais campos como null.',
+  ].join('\n')
+}
+
+function parseWebSearchResult(raw: string) {
+  const parsed = JSON.parse(raw) as {
+    found?: boolean
+    sourceUrl?: string | null
+    title?: string | null
+    summary?: string | null
+    publisher?: string | null
+  }
+
+  if (!parsed.found || !parsed.sourceUrl || !parsed.summary) {
+    return null
+  }
+
+  return {
+    sourceUrl: parsed.sourceUrl,
+    title: parsed.title ?? null,
+    summary: parsed.summary,
+    publisher: parsed.publisher ?? null,
+  }
+}
+
+async function defaultResolveWebSearchSource(input: {
   assetType: AssetReportAssetType
   ticker: string
 }): Promise<ResolvedReportSource | null> {
-  const ticker = normalizeTicker(input.ticker)
-
-  if (input.assetType === AssetReportAssetType.STOCK) {
-    return resolveStockAutoSource(ticker)
+  if (process.env.REPORT_AUTO_WEB_SEARCH_ENABLED !== 'true') {
+    return null
   }
 
-  return resolveFiiAutoSource(ticker)
+  if (!process.env.OPENAI_API_KEY) {
+    return null
+  }
+
+  const responsesApi = (openai as unknown as {
+    responses?: {
+      create: (input: Record<string, unknown>) => Promise<{ output_text?: string }>
+    }
+  }).responses
+
+  if (!responsesApi) {
+    return null
+  }
+
+  const response = await responsesApi.create({
+    model: process.env.OPENAI_WEB_SEARCH_MODEL ?? 'gpt-4.1-mini',
+    tools: [{ type: 'web_search_preview' }],
+    input: buildWebSearchPrompt(input),
+  })
+
+  const outputText = response.output_text?.trim()
+  if (!outputText) {
+    return null
+  }
+
+  let result: ReturnType<typeof parseWebSearchResult>
+  try {
+    result = parseWebSearchResult(outputText)
+  } catch {
+    return null
+  }
+
+  if (!result) {
+    return null
+  }
+
+  const promptContext = [
+    `Voce e um analista buy and hold do mercado brasileiro.`,
+    `Analise o ativo ${input.ticker} usando este resumo de fonte publica encontrada via busca web controlada.`,
+    `Fonte: ${result.title ?? 'Fonte publica'}${result.publisher ? ` (${result.publisher})` : ''}`,
+    `URL: ${result.sourceUrl}`,
+    '',
+    'Resumo util da fonte:',
+    result.summary,
+    '',
+    'Responda em portugues do Brasil com exatamente 5 bullets, cada um comecando com "•".',
+    'Cubra qualidade do ativo, riscos, leitura do momento e conclusao pratica.',
+  ].join('\n')
+
+  return {
+    assetType: input.assetType,
+    ticker: input.ticker,
+    sourceKind: AssetReportSourceKind.AUTO_FOUND,
+    sourceUrl: result.sourceUrl,
+    documentFingerprint: hashFingerprint({
+      ticker: input.ticker,
+      sourceUrl: result.sourceUrl,
+      summary: result.summary,
+      title: result.title,
+      publisher: result.publisher,
+      discoveryMethod: 'OPENAI_WEB_SEARCH',
+    }),
+    metadata: {
+      discoveryMethod: 'OPENAI_WEB_SEARCH',
+      title: result.title,
+      publisher: result.publisher,
+      summary: result.summary,
+    },
+    promptContext,
+  }
+}
+
+async function defaultResolveAutoSource(input: {
+  assetType: AssetReportAssetType
+  ticker: string
+}, resolveWebSearchSource?: ReportRuntime['resolveWebSearchSource']): Promise<ResolvedReportSource | null> {
+  const ticker = normalizeTicker(input.ticker)
+
+  const localSource = input.assetType === AssetReportAssetType.STOCK
+    ? await resolveStockAutoSource(ticker)
+    : await resolveFiiAutoSource(ticker)
+
+  if (localSource) {
+    return localSource
+  }
+
+  const webSearchResolver = resolveWebSearchSource ?? defaultResolveWebSearchSource
+  return webSearchResolver({
+    assetType: input.assetType,
+    ticker,
+  })
 }
 
 async function defaultGenerateAnalysis(input: {
@@ -222,22 +390,20 @@ function resolveManualFileKind(input: { originalFileName: string; contentType?: 
 async function extractManualUploadText(input: {
   originalFileName: string
   contentType?: string
-  fileBase64: string
+  buffer: Buffer
 }) {
-  const buffer = Buffer.from(input.fileBase64, 'base64')
-
-  if (!buffer.byteLength) {
+  if (!input.buffer.byteLength) {
     throw serviceError('REPORT_SOURCE_MANUAL_INVALID_FILE', 400)
   }
 
-  if (buffer.byteLength > MANUAL_UPLOAD_MAX_BYTES) {
+  if (input.buffer.byteLength > MANUAL_UPLOAD_MAX_BYTES) {
     throw serviceError('REPORT_SOURCE_MANUAL_FILE_TOO_LARGE', 413)
   }
 
   const fileKind = resolveManualFileKind(input)
   const rawText = fileKind === 'pdf'
-    ? (await new PDFParse({ data: buffer }).getText()).text
-    : buffer.toString('utf8')
+    ? (await new PDFParse({ data: input.buffer }).getText()).text
+    : input.buffer.toString('utf8')
   const normalizedText = normalizeManualText(rawText.replace(/<[^>]+>/g, ' '))
 
   if (normalizedText.length < MANUAL_UPLOAD_MIN_TEXT_LENGTH) {
@@ -246,8 +412,87 @@ async function extractManualUploadText(input: {
 
   return {
     text: normalizedText,
-    fileSizeBytes: buffer.byteLength,
-    storageKey: `manual-report/${hashText(`${input.originalFileName}:${input.fileBase64}`)}`,
+    fileSizeBytes: input.buffer.byteLength,
+  }
+}
+
+function decodeManualUploadBase64(fileBase64: string) {
+  const buffer = Buffer.from(fileBase64, 'base64')
+
+  if (!buffer.byteLength) {
+    throw serviceError('REPORT_SOURCE_MANUAL_INVALID_FILE', 400)
+  }
+
+  return buffer
+}
+
+function buildManualUploadStorageKey(input: {
+  assetType: AssetReportAssetType
+  ticker: string
+  originalFileName: string
+  fileBuffer: Buffer
+}) {
+  const extension = path.extname(input.originalFileName).toLowerCase()
+  const fingerprint = hashText(`${input.assetType}:${input.ticker}:${input.originalFileName}:${input.fileBuffer.toString('base64')}`)
+
+  return `manual-report/${input.assetType.toLowerCase()}/${input.ticker}/${fingerprint}${extension}`
+}
+
+async function resolveManualUploadBuffer(input: {
+  fileBase64?: string
+  storageKey?: string
+}) {
+  if (input.storageKey) {
+    try {
+      const stored = await getObject({ key: input.storageKey })
+      return {
+        buffer: stored.body,
+        storageKey: stored.key,
+      }
+    } catch {
+      throw serviceError('REPORT_SOURCE_MANUAL_STORAGE_NOT_FOUND', 404)
+    }
+  }
+
+  if (!input.fileBase64) {
+    throw serviceError('REPORT_SOURCE_MANUAL_INVALID_FILE', 400)
+  }
+
+  return {
+    buffer: decodeManualUploadBase64(input.fileBase64),
+    storageKey: null,
+  }
+}
+
+export async function storeManualUploadObject(input: {
+  assetType: AssetReportAssetType
+  ticker: string
+  originalFileName: string
+  contentType?: string
+  fileBase64: string
+}) {
+  const buffer = decodeManualUploadBase64(input.fileBase64)
+  const ticker = normalizeTicker(input.ticker)
+  const extracted = await extractManualUploadText({
+    originalFileName: input.originalFileName,
+    contentType: input.contentType,
+    buffer,
+  })
+  const storageKey = buildManualUploadStorageKey({
+    assetType: input.assetType,
+    ticker,
+    originalFileName: input.originalFileName,
+    fileBuffer: buffer,
+  })
+
+  await putObject({
+    key: storageKey,
+    body: buffer,
+  })
+
+  return {
+    storageKey,
+    fileSizeBytes: extracted.fileSizeBytes,
   }
 }
 
@@ -272,6 +517,34 @@ ${documentText}
 
 Responda em portugues do Brasil com exatamente 5 bullets, cada um comecando com "•".
 Cubra qualidade do negocio ou portfolio, valuation/renda quando possivel, principais riscos, leitura do momento e conclusao pratica.`
+}
+
+async function validateManualReportBelongsToAsset(input: {
+  assetType: AssetReportAssetType
+  ticker: string
+  documentText: string
+}) {
+  if (hasExactToken(input.documentText, input.ticker)) {
+    return {
+      matchedBy: 'ticker' as const,
+    }
+  }
+
+  if (input.assetType === AssetReportAssetType.STOCK) {
+    const stock = await getStockDetail(input.ticker)
+    const aliases = [stock?.shortName, stock?.longName]
+      .filter((alias): alias is string => Boolean(alias?.trim()))
+
+    const matchedAlias = aliases.find((alias) => hasStrongAliasMatch(input.documentText, alias))
+    if (matchedAlias) {
+      return {
+        matchedBy: 'company-name' as const,
+        matchedAlias,
+      }
+    }
+  }
+
+  throw serviceError('REPORT_SOURCE_MANUAL_ASSET_MISMATCH', 422)
 }
 
 function buildStockSnapshot(stock: StockDetail) {
@@ -601,7 +874,10 @@ export async function createOnDemandReportAnalysis(
     }
   }
 
-  const resolveAutoSource = runtime.resolveAutoSource ?? defaultResolveAutoSource
+  const resolveAutoSource = runtime.resolveAutoSource ?? ((sourceInput: {
+    assetType: AssetReportAssetType
+    ticker: string
+  }) => defaultResolveAutoSource(sourceInput, runtime.resolveWebSearchSource))
   const resolvedSource = await resolveAutoSource({
     assetType: input.assetType,
     ticker,
@@ -630,7 +906,8 @@ export async function createManualReportAnalysis(
     ticker: string
     originalFileName: string
     contentType?: string
-    fileBase64: string
+    fileBase64?: string
+    storageKey?: string
   },
   runtime: ReportRuntime = {},
 ) {
@@ -657,17 +934,35 @@ export async function createManualReportAnalysis(
     }
   }
 
+  const manualUpload = await resolveManualUploadBuffer({
+    fileBase64: input.fileBase64,
+    storageKey: input.storageKey,
+  })
+  const storedUpload = input.storageKey
+    ? null
+    : await storeManualUploadObject({
+        assetType: input.assetType,
+        ticker,
+        originalFileName: input.originalFileName,
+        contentType: input.contentType,
+        fileBase64: input.fileBase64!,
+      })
   const extracted = await extractManualUploadText({
     originalFileName: input.originalFileName,
     contentType: input.contentType,
-    fileBase64: input.fileBase64,
+    buffer: manualUpload.buffer,
+  })
+  const validation = await validateManualReportBelongsToAsset({
+    assetType: input.assetType,
+    ticker,
+    documentText: extracted.text,
   })
   const resolvedSource: ResolvedReportSource = {
     assetType: input.assetType,
     ticker,
     sourceKind: AssetReportSourceKind.MANUAL_UPLOAD,
     sourceUrl: null,
-    storageKey: extracted.storageKey,
+    storageKey: input.storageKey ?? storedUpload?.storageKey ?? manualUpload.storageKey,
     originalFileName: input.originalFileName,
     documentFingerprint: hashText(normalizeManualText(extracted.text)),
     metadata: {
@@ -676,6 +971,7 @@ export async function createManualReportAnalysis(
         contentType: input.contentType ?? null,
         fileSizeBytes: extracted.fileSizeBytes,
       },
+      validation,
     },
     promptContext: buildManualPromptContext({
       assetType: input.assetType,

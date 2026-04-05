@@ -1,5 +1,7 @@
 import assert from 'node:assert/strict'
 import crypto from 'node:crypto'
+import { rm } from 'node:fs/promises'
+import path from 'node:path'
 import bcrypt from 'bcryptjs'
 import { PlanType } from '@prisma/client'
 import type { FastifyInstance } from 'fastify'
@@ -32,6 +34,8 @@ export async function cleanupTestData() {
   })
   const userIds = users.map((user) => user.id)
 
+  await prisma.reportSearchCooldown.deleteMany({})
+  await prisma.reportAnalysisJob.deleteMany({})
   await prisma.userAssetReportAccess.deleteMany({})
   await prisma.assetReportAnalysis.deleteMany({})
   await prisma.assetReportSource.deleteMany({})
@@ -76,6 +80,11 @@ export async function cleanupTestData() {
   if (userIds.length > 0) {
     await prisma.user.deleteMany({ where: { id: { in: userIds } } })
   }
+
+  await rm(
+    path.resolve(process.cwd(), process.env.REPORT_OBJECT_STORAGE_ROOT ?? '.data/report-objects'),
+    { recursive: true, force: true },
+  )
 }
 
 export async function createTestUser(options?: {
