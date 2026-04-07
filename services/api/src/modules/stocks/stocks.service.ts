@@ -96,6 +96,7 @@ export async function getStockDetail(ticker: string): Promise<StockDetail | null
         fullTimeEmployees: null,
         cnpj: null,
       },
+      summaryDetail: null,
       financialData: null,
       defaultKeyStatistics: null,
     }

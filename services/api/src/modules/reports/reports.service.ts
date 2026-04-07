@@ -64,8 +64,14 @@ type ReportRuntime = {
     ticker: string
     promptContext: string
   }) => Promise<string>
+  buildValuationAppendix?: (input: {
+    assetType: AssetReportAssetType
+    ticker: string
+  }) => Promise<string[]>
   now?: () => Date
 }
+
+const BAZIN_TARGET_YIELD_PERCENT = 6
 
 function serviceError(message: string, statusCode: number) {
   return Object.assign(new Error(message), { statusCode })
@@ -85,6 +91,30 @@ function hashFingerprint(payload: unknown) {
 
 function hashText(value: string) {
   return crypto.createHash('sha256').update(value).digest('hex')
+}
+
+function shouldLogReportSourceDebug() {
+  return process.env.REPORT_SOURCE_DEBUG === 'true'
+}
+
+function logReportSourceDebug(event: string, payload: Record<string, unknown>) {
+  if (!shouldLogReportSourceDebug()) {
+    return
+  }
+
+  console.info('[reports.source-debug]', {
+    event,
+    ...payload,
+  })
+}
+
+function previewDebugText(value: string, maxLength = 400) {
+  const normalized = value.replace(/\s+/g, ' ').trim()
+  if (normalized.length <= maxLength) {
+    return normalized
+  }
+
+  return `${normalized.slice(0, maxLength)}...`
 }
 
 function normalizeSearchText(value: string) {
@@ -132,6 +162,136 @@ function formatRatio(value: number | null | undefined) {
   return value.toFixed(2)
 }
 
+function formatNumber(value: number, fractionDigits = 2) {
+  return value.toLocaleString('pt-BR', {
+    minimumFractionDigits: fractionDigits,
+    maximumFractionDigits: fractionDigits,
+  })
+}
+
+function normalizeYieldPercent(value: number | null | undefined) {
+  if (value == null || !Number.isFinite(value) || value <= 0) {
+    return null
+  }
+
+  return value <= 1 ? value * 100 : value
+}
+
+function describeFairPriceGap(fairPrice: number, currentPrice: number) {
+  const relativeDelta = ((fairPrice / currentPrice) - 1) * 100
+
+  if (Math.abs(relativeDelta) < 0.25) {
+    return 'muito próximo do preço atual'
+  }
+
+  if (relativeDelta > 0) {
+    return `potencial teórico de alta de ${formatNumber(relativeDelta)}% sobre o preço atual`
+  }
+
+  return `prêmio de ${formatNumber(Math.abs(relativeDelta))}% sobre o preço justo estimado`
+}
+
+function buildStockGrahamBullet(snapshot: ReturnType<typeof buildStockSnapshot>) {
+  const currentPrice = snapshot.regularMarketPrice
+  const earningsPerShare = snapshot.earningsPerShare
+  const bookValue = snapshot.defaultKeyStatistics.bookValue
+
+  if (
+    currentPrice == null || currentPrice <= 0 ||
+    earningsPerShare == null || earningsPerShare <= 0 ||
+    bookValue == null || bookValue <= 0
+  ) {
+    return 'Fórmula de Graham: não foi possível calcular com confiança porque faltam LPA/EPS positivo e valor patrimonial por ação consistentes no snapshot atual.'
+  }
+
+  const fairPrice = Math.sqrt(22.5 * earningsPerShare * bookValue)
+
+  return `Fórmula de Graham: √(22,5 × LPA × VPA) = √(22,5 × ${formatNumber(earningsPerShare)} × ${formatNumber(bookValue)}) = ${formatCurrency(fairPrice)}. Preço atual: ${formatCurrency(currentPrice)}; isso sugere ${describeFairPriceGap(fairPrice, currentPrice)}.`
+}
+
+function buildBazinBullet(input: {
+  currentPrice: number | null | undefined
+  dividendYieldPercent: number | null | undefined
+  annualDividendPerShare?: number | null | undefined
+  assetLabel: string
+}) {
+  const currentPrice = input.currentPrice
+  const dividendYieldPercent = normalizeYieldPercent(input.dividendYieldPercent)
+  const annualDividendPerShare = input.annualDividendPerShare ?? (
+    currentPrice != null && dividendYieldPercent != null
+      ? currentPrice * (dividendYieldPercent / 100)
+      : null
+  )
+
+  if (
+    currentPrice == null || currentPrice <= 0 ||
+    dividendYieldPercent == null || dividendYieldPercent <= 0 ||
+    annualDividendPerShare == null || annualDividendPerShare <= 0
+  ) {
+    return `Fórmula de Bazin (${input.assetLabel}): não foi possível calcular com confiança porque faltam DY ou dividendo anual por ação/cota no snapshot atual.`
+  }
+
+  const fairPrice = annualDividendPerShare / (BAZIN_TARGET_YIELD_PERCENT / 100)
+
+  return `Fórmula de Bazin (${input.assetLabel}): Preço justo = Dividendo anual ÷ ${formatNumber(BAZIN_TARGET_YIELD_PERCENT)}%. Com DY atual de ${formatNumber(dividendYieldPercent)}% e provento anual estimado de ${formatCurrency(annualDividendPerShare)}, o preço justo estimado é ${formatCurrency(fairPrice)}. Preço atual: ${formatCurrency(currentPrice)}; isso sugere ${describeFairPriceGap(fairPrice, currentPrice)}.`
+}
+
+async function defaultBuildValuationAppendix(input: {
+  assetType: AssetReportAssetType
+  ticker: string
+}) {
+  if (process.env.NODE_ENV === 'test') {
+    return []
+  }
+
+  if (input.assetType === AssetReportAssetType.STOCK) {
+    const stock = await getStockDetail(input.ticker)
+    if (!stock) {
+      return []
+    }
+
+    const snapshot = buildStockSnapshot(stock)
+    return [
+      buildStockGrahamBullet(snapshot),
+      buildBazinBullet({
+        currentPrice: snapshot.regularMarketPrice,
+        dividendYieldPercent: snapshot.summaryDetail.dividendYield,
+        annualDividendPerShare: snapshot.summaryDetail.dividendRate,
+        assetLabel: 'ação',
+      }),
+    ]
+  }
+
+  const fii = await getFii(input.ticker)
+  if (!fii) {
+    return []
+  }
+
+  const snapshot = buildFiiSnapshot(fii)
+
+  return [
+    'Fórmula de Graham: não foi calculada para FIIs neste relatório automático, porque a abordagem clássica depende de lucro por ação/cota e valor patrimonial por ação comparáveis, o que não está disponível com consistência nesta fonte.',
+    buildBazinBullet({
+      currentPrice: snapshot.cotacao,
+      dividendYieldPercent: snapshot.dividendYield,
+      assetLabel: 'FII',
+    }),
+  ]
+}
+
+function appendValuationAppendix(analysisText: string, appendixBullets: string[]) {
+  const normalizedBullets = appendixBullets
+    .map((bullet) => bullet.trim())
+    .filter(Boolean)
+    .map((bullet) => bullet.startsWith('•') ? bullet : `• ${bullet}`)
+
+  if (normalizedBullets.length === 0) {
+    return analysisText
+  }
+
+  return `${analysisText.trim()}\n${normalizedBullets.join('\n')}`
+}
+
 async function resolveStockAutoSource(ticker: string): Promise<ResolvedReportSource | null> {
   const stock = await getStockDetail(ticker)
   if (!stock) {
@@ -172,12 +332,23 @@ function buildWebSearchPrompt(input: {
   assetType: AssetReportAssetType
   ticker: string
 }) {
-  const assetLabel = input.assetType === AssetReportAssetType.FII ? 'FII brasileiro' : 'acao brasileira listada na B3'
+  const assetLabel = input.assetType === AssetReportAssetType.FII ? 'FII brasileiro listado na B3' : 'acao brasileira listada na B3'
+  const documentHints = input.assetType === AssetReportAssetType.FII
+    ? [
+        'Priorize documentos oficiais do fundo, da gestora ou da administradora.',
+        'Busque por relatorio gerencial, informe mensal, fatos relevantes, comunicados ao mercado ou pagina oficial de relacoes com investidores/documentos.',
+      ]
+    : [
+        'Priorize documentos oficiais de RI/IR da companhia.',
+        'Busque por release de resultados, apresentacao de resultados, ITR, DFP, formulario de referencia ou pagina oficial de relacoes com investidores.',
+      ]
 
   return [
-    'Encontre uma fonte publica confiavel e recente para analise fundamentalista do ativo abaixo.',
+    'Encontre uma fonte oficial e recente para analise fundamentalista do ativo abaixo.',
     `Ticker: ${input.ticker}`,
     `Tipo: ${assetLabel}`,
+    ...documentHints,
+    'Prefira URL oficial de RI, site da companhia, site do fundo, gestora, administradora ou documento hospedado nesses domínios.',
     'Responda apenas em JSON valido sem markdown.',
     'Campos esperados:',
     '{',
@@ -185,7 +356,8 @@ function buildWebSearchPrompt(input: {
     '  "sourceUrl": string | null,',
     '  "title": string | null,',
     '  "summary": string | null,',
-    '  "publisher": string | null',
+    '  "publisher": string | null,',
+    '  "sourceType": string | null',
     '}',
     'Se nao encontrar fonte util, retorne found=false e os demais campos como null.',
   ].join('\n')
@@ -198,6 +370,7 @@ function parseWebSearchResult(raw: string) {
     title?: string | null
     summary?: string | null
     publisher?: string | null
+    sourceType?: string | null
   }
 
   if (!parsed.found || !parsed.sourceUrl || !parsed.summary) {
@@ -209,6 +382,7 @@ function parseWebSearchResult(raw: string) {
     title: parsed.title ?? null,
     summary: parsed.summary,
     publisher: parsed.publisher ?? null,
+    sourceType: parsed.sourceType ?? null,
   }
 }
 
@@ -217,10 +391,20 @@ async function defaultResolveWebSearchSource(input: {
   ticker: string
 }): Promise<ResolvedReportSource | null> {
   if (process.env.REPORT_AUTO_WEB_SEARCH_ENABLED !== 'true') {
+    logReportSourceDebug('web-search-skipped', {
+      assetType: input.assetType,
+      ticker: input.ticker,
+      reason: `REPORT_AUTO_WEB_SEARCH_ENABLED = ${process.env.REPORT_AUTO_WEB_SEARCH_ENABLED}`,
+    })
     return null
   }
 
   if (!process.env.OPENAI_API_KEY) {
+    logReportSourceDebug('web-search-skipped', {
+      assetType: input.assetType,
+      ticker: input.ticker,
+      reason: 'OPENAI_API_KEY_MISSING',
+    })
     return null
   }
 
@@ -231,8 +415,19 @@ async function defaultResolveWebSearchSource(input: {
   }).responses
 
   if (!responsesApi) {
+    logReportSourceDebug('web-search-skipped', {
+      assetType: input.assetType,
+      ticker: input.ticker,
+      reason: 'OPENAI_RESPONSES_API_UNAVAILABLE',
+    })
     return null
   }
+
+  logReportSourceDebug('web-search-started', {
+    assetType: input.assetType,
+    ticker: input.ticker,
+    model: process.env.OPENAI_WEB_SEARCH_MODEL ?? 'gpt-4.1-mini',
+  })
 
   const response = await responsesApi.create({
     model: process.env.OPENAI_WEB_SEARCH_MODEL ?? 'gpt-4.1-mini',
@@ -242,32 +437,61 @@ async function defaultResolveWebSearchSource(input: {
 
   const outputText = response.output_text?.trim()
   if (!outputText) {
+    logReportSourceDebug('web-search-empty-output', {
+      assetType: input.assetType,
+      ticker: input.ticker,
+    })
     return null
   }
+
+  logReportSourceDebug('web-search-output-received', {
+    assetType: input.assetType,
+    ticker: input.ticker,
+    outputPreview: previewDebugText(outputText),
+  })
 
   let result: ReturnType<typeof parseWebSearchResult>
   try {
     result = parseWebSearchResult(outputText)
-  } catch {
+  } catch (error) {
+    logReportSourceDebug('web-search-parse-failed', {
+      assetType: input.assetType,
+      ticker: input.ticker,
+      error: error instanceof Error ? error.message : 'UNKNOWN_ERROR',
+    })
     return null
   }
 
   if (!result) {
+    logReportSourceDebug('web-search-no-usable-result', {
+      assetType: input.assetType,
+      ticker: input.ticker,
+    })
     return null
   }
 
+  logReportSourceDebug('web-search-source-found', {
+    assetType: input.assetType,
+    ticker: input.ticker,
+    sourceUrl: result.sourceUrl,
+    title: result.title,
+    publisher: result.publisher,
+    sourceType: result.sourceType,
+  })
+
   const promptContext = [
     `Voce e um analista buy and hold do mercado brasileiro.`,
-    `Analise o ativo ${input.ticker} usando este resumo de fonte publica encontrada via busca web controlada.`,
+    `Analise o ativo ${input.ticker} usando este resumo de documento ou pagina oficial localizada via busca web controlada.`,
     `Fonte: ${result.title ?? 'Fonte publica'}${result.publisher ? ` (${result.publisher})` : ''}`,
     `URL: ${result.sourceUrl}`,
+    result.sourceType ? `Tipo da fonte: ${result.sourceType}` : null,
     '',
-    'Resumo util da fonte:',
+    'Resumo util da fonte oficial:',
     result.summary,
     '',
     'Responda em portugues do Brasil com exatamente 5 bullets, cada um comecando com "•".',
     'Cubra qualidade do ativo, riscos, leitura do momento e conclusao pratica.',
-  ].join('\n')
+  ].filter(Boolean).join('\n')
 
   return {
     assetType: input.assetType,
@@ -280,12 +504,14 @@ async function defaultResolveWebSearchSource(input: {
       summary: result.summary,
       title: result.title,
       publisher: result.publisher,
-      discoveryMethod: 'OPENAI_WEB_SEARCH',
+      sourceType: result.sourceType,
+      discoveryMethod: 'OFFICIAL_IR_WEB_SEARCH',
     }),
     metadata: {
-      discoveryMethod: 'OPENAI_WEB_SEARCH',
+      discoveryMethod: 'OFFICIAL_IR_WEB_SEARCH',
       title: result.title,
       publisher: result.publisher,
+      sourceType: result.sourceType,
       summary: result.summary,
     },
     promptContext,
@@ -297,20 +523,43 @@ async function defaultResolveAutoSource(input: {
   ticker: string
 }, resolveWebSearchSource?: ReportRuntime['resolveWebSearchSource']): Promise<ResolvedReportSource | null> {
   const ticker = normalizeTicker(input.ticker)
+  const webSearchResolver = resolveWebSearchSource ?? defaultResolveWebSearchSource
+
+  const officialSource = await webSearchResolver({
+    assetType: input.assetType,
+    ticker,
+  })
+
+  if (officialSource) {
+    logReportSourceDebug('source-selected', {
+      assetType: input.assetType,
+      ticker,
+      selected: 'OFFICIAL_IR_WEB_SEARCH',
+      sourceUrl: officialSource.sourceUrl ?? null,
+    })
+    return officialSource
+  }
 
   const localSource = input.assetType === AssetReportAssetType.STOCK
     ? await resolveStockAutoSource(ticker)
     : await resolveFiiAutoSource(ticker)
 
   if (localSource) {
+    logReportSourceDebug('source-selected', {
+      assetType: input.assetType,
+      ticker,
+      selected: input.assetType === AssetReportAssetType.STOCK ? 'BRAPI_FALLBACK' : 'FUNDAMENTUS_FALLBACK',
+      sourceUrl: localSource.sourceUrl ?? null,
+    })
     return localSource
   }
 
-  const webSearchResolver = resolveWebSearchSource ?? defaultResolveWebSearchSource
-  return webSearchResolver({
+  logReportSourceDebug('source-not-found', {
     assetType: input.assetType,
     ticker,
   })
+
+  return null
 }
 
 async function defaultGenerateAnalysis(input: {
@@ -563,6 +812,12 @@ function buildStockSnapshot(stock: StockDetail) {
       industry: stock.summaryProfile?.industry ?? null,
       website: stock.summaryProfile?.website ?? null,
     },
+    summaryDetail: {
+      dividendRate: stock.summaryDetail?.dividendRate ?? null,
+      dividendYield: stock.summaryDetail?.dividendYield ?? null,
+      lastDividendValue: stock.summaryDetail?.lastDividendValue ?? null,
+    },
+    earningsPerShare: stock.earningsPerShare ?? stock.defaultKeyStatistics?.trailingEps ?? null,
     financialData: {
       totalRevenue: stock.financialData?.totalRevenue ?? null,
       ebitda: stock.financialData?.ebitda ?? null,
@@ -582,6 +837,7 @@ function buildStockSnapshot(stock: StockDetail) {
     },
     defaultKeyStatistics: {
       beta: stock.defaultKeyStatistics?.beta ?? null,
+      bookValue: stock.defaultKeyStatistics?.bookValue ?? null,
       pegRatio: stock.defaultKeyStatistics?.pegRatio ?? null,
       priceToBook: stock.defaultKeyStatistics?.priceToBook ?? null,
       enterpriseToEbitda: stock.defaultKeyStatistics?.enterpriseToEbitda ?? null,
@@ -755,6 +1011,7 @@ async function createAnalysisFromResolvedSource(input: {
   now: Date
   resolvedSource: ResolvedReportSource
   generateAnalysis: NonNullable<ReportRuntime['generateAnalysis']>
+  buildValuationAppendix: NonNullable<ReportRuntime['buildValuationAppendix']>
 }) {
   const source = await upsertAssetReportSource({
     assetType: input.assetType,
@@ -799,11 +1056,17 @@ async function createAnalysisFromResolvedSource(input: {
     }
   }
 
-  const analysisText = await input.generateAnalysis({
+  const baseAnalysisText = await input.generateAnalysis({
     assetType: input.assetType,
     ticker: input.ticker,
     promptContext: input.resolvedSource.promptContext,
   })
+
+  const valuationAppendix = await input.buildValuationAppendix({
+    assetType: input.assetType,
+    ticker: input.ticker,
+  })
+  const analysisText = appendValuationAppendix(baseAnalysisText, valuationAppendix)
 
   const analysis = await upsertAssetReportAnalysis({
     assetType: input.assetType,
@@ -887,6 +1150,7 @@ export async function createOnDemandReportAnalysis(
     throw serviceError('REPORT_SOURCE_NOT_FOUND', 404)
   }
   const generateAnalysis = runtime.generateAnalysis ?? defaultGenerateAnalysis
+  const buildValuationAppendix = runtime.buildValuationAppendix ?? defaultBuildValuationAppendix
   return createAnalysisFromResolvedSource({
     userId: input.userId,
     assetType: input.assetType,
@@ -896,6 +1160,7 @@ export async function createOnDemandReportAnalysis(
     now,
     resolvedSource,
     generateAnalysis,
+    buildValuationAppendix,
   })
 }
 
@@ -982,6 +1247,7 @@ export async function createManualReportAnalysis(
   }
 
   const generateAnalysis = runtime.generateAnalysis ?? defaultGenerateAnalysis
+  const buildValuationAppendix = runtime.buildValuationAppendix ?? defaultBuildValuationAppendix
   return createAnalysisFromResolvedSource({
     userId: input.userId,
     assetType: input.assetType,
@@ -991,6 +1257,7 @@ export async function createManualReportAnalysis(
     now,
     resolvedSource,
     generateAnalysis,
+    buildValuationAppendix,
   })
 }
 

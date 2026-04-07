@@ -193,30 +193,33 @@ test('reports-on-demand.spec: não cobra quando o relatório não é encontrado 
   assert.equal(ledger.filter((entry) => entry.kind === 'DEBIT').length, 0)
 })
 
-test('reports-on-demand.spec: usa fallback de busca web controlada quando fonte local nao existe', async () => {
+test('reports-on-demand.spec: prioriza fonte oficial via busca web antes do fallback local', async () => {
   const user = await createTestUser({ name: 'Web Search User', plan: PlanType.FREE })
   await seedCredits(user.id, 5, 'web-search')
-  const missingTicker = 'ZZZZ3'
+  const ticker = 'PETR4'
 
   let webSearchCalls = 0
   const result = await createOnDemandReportAnalysis({
     userId: user.id,
     assetType: AssetReportAssetType.STOCK,
-    ticker: missingTicker,
+    ticker,
   }, {
     resolveWebSearchSource: async () => {
       webSearchCalls += 1
       return {
         assetType: AssetReportAssetType.STOCK,
-        ticker: missingTicker,
+        ticker,
         sourceKind: 'AUTO_FOUND' as const,
-        sourceUrl: 'https://example.com/zzzz3-web-report',
-        documentFingerprint: 'fp-zzzz3-web-v1',
+        sourceUrl: 'https://ri.example.com/petr4-release.pdf',
+        documentFingerprint: 'fp-petr4-ir-v1',
         metadata: {
-          discoveryMethod: 'OPENAI_WEB_SEARCH',
-          summary: 'Resumo encontrado em busca web controlada.',
+          discoveryMethod: 'OFFICIAL_IR_WEB_SEARCH',
+          title: 'Release de Resultados 1T26',
+          publisher: 'RI PETR4',
+          sourceType: 'release de resultados',
+          summary: 'Resumo encontrado em documento oficial de RI.',
         },
-        promptContext: 'Resumo encontrado em busca web controlada.',
+        promptContext: 'Resumo encontrado em documento oficial de RI.',
       }
     },
     generateAnalysis: async () => '• web 1\n• web 2\n• web 3\n• web 4\n• web 5',
@@ -226,9 +229,39 @@ test('reports-on-demand.spec: usa fallback de busca web controlada quando fonte 
   assert.equal(result.outcome, 'GENERATED')
   assert.equal(result.chargedAmount, '2.5')
   assert.equal(webSearchCalls, 1)
-  assert.equal(result.analysis.source.sourceUrl, 'https://example.com/zzzz3-web-report')
+  assert.equal(result.analysis.source.sourceUrl, 'https://ri.example.com/petr4-release.pdf')
   const metadata = result.analysis.source.metadata as { discoveryMethod?: string } | null
-  assert.equal(metadata?.discoveryMethod, 'OPENAI_WEB_SEARCH')
+  assert.equal(metadata?.discoveryMethod, 'OFFICIAL_IR_WEB_SEARCH')
+})
+
+test('reports-on-demand.spec: anexa apêndice de valuation com Graham e Bazin ao texto final', async () => {
+  const user = await createTestUser({ name: 'Valuation User', plan: PlanType.FREE })
+  await seedCredits(user.id, 5, 'valuation')
+
+  const result = await createOnDemandReportAnalysis({
+    userId: user.id,
+    assetType: AssetReportAssetType.STOCK,
+    ticker: 'WEG3',
+  }, {
+    resolveAutoSource: async () => ({
+      assetType: AssetReportAssetType.STOCK,
+      ticker: 'WEG3',
+      sourceKind: 'AUTO_FOUND' as const,
+      sourceUrl: 'https://ri.example.com/weg3-release.pdf',
+      documentFingerprint: 'fp-weg3-v1',
+      metadata: { provider: 'test' },
+      promptContext: 'context',
+    }),
+    generateAnalysis: async () => '• leitura 1\n• leitura 2\n• leitura 3\n• leitura 4\n• leitura 5',
+    buildValuationAppendix: async () => ([
+      'Fórmula de Graham: preço justo estimado em R$ 42,10.',
+      'Fórmula de Bazin: preço justo estimado em R$ 37,80.',
+    ]),
+    now: () => new Date('2026-04-04T12:00:00.000Z'),
+  })
+
+  assert.match(result.analysis.analysisText, /Fórmula de Graham: preço justo estimado em R\$ 42,10\./)
+  assert.match(result.analysis.analysisText, /Fórmula de Bazin: preço justo estimado em R\$ 37,80\./)
 })
 
 test('reports-on-demand.spec: upload manual gera análise, reaproveita fingerprint e não cobra arquivo inválido', async () => {

@@ -244,7 +244,7 @@ export function DashboardShell({
   }
 
   return (
-    <div className="min-h-screen bg-[var(--background)]">
+    <div className="dashboard-theme min-h-screen bg-[var(--background)]">
       <aside className="fixed inset-y-0 left-0 z-30 flex w-64 flex-col border-r border-slate-200 bg-[var(--background)] max-lg:![display:none]">
         <div className="flex items-center justify-center border-b border-slate-200 px-4 py-4">
           <Image

@@ -38,6 +38,9 @@ export async function buildServer() {
           },
   })
 
+  console.log(`REPORT_AUTO_WEB_SEARCH_ENABLED = ${process.env.REPORT_AUTO_WEB_SEARCH_ENABLED}`);
+  
+
   server.addContentTypeParser(
     'application/json',
     { parseAs: 'buffer' },

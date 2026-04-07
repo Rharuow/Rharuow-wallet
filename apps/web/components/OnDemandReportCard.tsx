@@ -31,6 +31,10 @@ type ReportAnalysisPayload = {
       sourceKind: "AUTO_FOUND" | "MANUAL_UPLOAD";
       sourceUrl: string | null;
       originalFileName: string | null;
+      title: string | null;
+      publisher: string | null;
+      sourceType: string | null;
+      discoveryMethod: string | null;
     };
   };
 };
@@ -144,6 +148,28 @@ function statusToneClass(status: ReportJobStatus) {
 
 function formatRequestMode(mode: RequestMode) {
   return mode === "MANUAL_UPLOAD" ? "Upload manual" : "Busca automática";
+}
+
+function formatSourceLabel(source: ReportAnalysisPayload["analysis"]["source"]) {
+  if (source.sourceKind === "MANUAL_UPLOAD") {
+    return source.originalFileName ?? "Arquivo enviado pelo usuário";
+  }
+
+  if (source.title && source.publisher) {
+    return `${source.title} · ${source.publisher}`;
+  }
+
+  if (source.title) {
+    return source.title;
+  }
+
+  if (source.publisher) {
+    return source.publisher;
+  }
+
+  return source.discoveryMethod === "OFFICIAL_IR_WEB_SEARCH"
+    ? "Documento oficial localizado via busca web"
+    : "Fonte automática por ticker";
 }
 
 function mergeJobs(current: ReportJob[], incoming: ReportJob[]) {
@@ -663,11 +689,24 @@ export function OnDemandReportCard({
                 <p className="text-xs text-slate-500">
                   Acesso liberado até {formatDate(analysisResult.access.expiresAt)} · validade da análise até {formatDate(analysisResult.analysis.validUntil)}
                 </p>
-                <p className="text-xs text-slate-500">
-                  {analysisResult.analysis.source.sourceKind === "MANUAL_UPLOAD"
-                    ? `Origem manual: ${analysisResult.analysis.source.originalFileName ?? "arquivo enviado"}`
-                    : "Origem automática por ticker"}
-                </p>
+                <div className="mt-1 space-y-1 text-xs text-slate-500">
+                  <p>
+                    Fonte: {formatSourceLabel(analysisResult.analysis.source)}
+                  </p>
+                  {analysisResult.analysis.source.sourceType ? (
+                    <p>Tipo: {analysisResult.analysis.source.sourceType}</p>
+                  ) : null}
+                  {analysisResult.analysis.source.sourceUrl ? (
+                    <a
+                      href={analysisResult.analysis.source.sourceUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="inline-flex font-semibold text-[var(--primary)] underline"
+                    >
+                      Abrir fonte da informação
+                    </a>
+                  ) : null}
+                </div>
               </div>
               <Link href="/dashboard/creditos" className="text-xs font-semibold text-[var(--primary)] underline">
                 Gerenciar créditos

@@ -20,6 +20,6 @@
     "concurrently": "^9.2.1"
   },
   "dependencies": {
-    "rharuow-ds": "^1.10.22"
+    "rharuow-ds": "^1.11.0"
   }
 }

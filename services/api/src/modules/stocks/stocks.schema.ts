@@ -92,6 +92,11 @@ export const StockDetailSchema = z.object({
     fullTimeEmployees: z.number().nullable(),
     cnpj: z.string().nullable(),
   }).nullable(),
+  summaryDetail: z.object({
+    dividendRate: z.number().nullable(),
+    dividendYield: z.number().nullable(),
+    lastDividendValue: z.number().nullable(),
+  }).nullable(),
   // Financeiro
   financialData: z.object({
     totalRevenue: z.number().nullable(),

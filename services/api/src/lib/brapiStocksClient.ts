@@ -93,7 +93,7 @@ export async function fetchBrapiStocks(
 // ----------------------------------------------------------------
 
 const BRAPI_QUOTE_URL = 'https://brapi.dev/api/quote'
-const DETAIL_MODULES = 'summaryProfile,financialData,defaultKeyStatistics'
+const DETAIL_MODULES = 'summaryProfile,summaryDetail,financialData,defaultKeyStatistics'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 async function fetchQuote(url: string): Promise<any | null> {

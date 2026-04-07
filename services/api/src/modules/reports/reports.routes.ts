@@ -1,5 +1,5 @@
 import { FastifyInstance, FastifyReply } from 'fastify'
-import { ReportAnalysisJobStatus } from '@prisma/client'
+import { Prisma, ReportAnalysisJobStatus } from '@prisma/client'
 import { authenticate } from '../../plugins/authenticate'
 import {
   createManualReportJobSchema,
@@ -32,6 +32,27 @@ type CreatedReportJob = Awaited<ReturnType<typeof createReportAnalysisJob>>
 type ListedReportJob = Awaited<ReturnType<typeof listReportAnalysisJobs>>[number]
 type ReportJob = ExistingReportJob | CreatedReportJob | ListedReportJob
 
+function serializeSource(source: {
+  id: string
+  sourceKind: string
+  sourceUrl: string | null
+  originalFileName: string | null
+  metadata: Prisma.JsonValue | null
+}) {
+  const metadata = (source.metadata ?? null) as Record<string, unknown> | null
+
+  return {
+    id: source.id,
+    sourceKind: source.sourceKind,
+    sourceUrl: source.sourceUrl,
+    originalFileName: source.originalFileName,
+    title: typeof metadata?.title === 'string' ? metadata.title : null,
+    publisher: typeof metadata?.publisher === 'string' ? metadata.publisher : null,
+    sourceType: typeof metadata?.sourceType === 'string' ? metadata.sourceType : null,
+    discoveryMethod: typeof metadata?.discoveryMethod === 'string' ? metadata.discoveryMethod : null,
+  }
+}
+
 function serializeAnalysis(access: NonNullable<Awaited<ReturnType<typeof getUserAccessibleReportAnalysis>>>) {
   return {
     access: {
@@ -45,12 +66,7 @@ function serializeAnalysis(access: NonNullable<Awaited<ReturnType<typeof getUser
       analysisText: access.analysis.analysisText,
       model: access.analysis.model,
       validUntil: access.analysis.validUntil,
-      source: {
-        id: access.analysis.source.id,
-        sourceKind: access.analysis.source.sourceKind,
-        sourceUrl: access.analysis.source.sourceUrl,
-        originalFileName: access.analysis.source.originalFileName,
-      },
+      source: serializeSource(access.analysis.source),
     },
   }
 }
@@ -76,12 +92,7 @@ function serializeCreateResult(result: Awaited<ReturnType<typeof createOnDemandR
       analysisText: result.analysis.analysisText,
       model: result.analysis.model,
       validUntil: result.analysis.validUntil,
-      source: {
-        id: result.analysis.source.id,
-        sourceKind: result.analysis.source.sourceKind,
-        sourceUrl: result.analysis.source.sourceUrl,
-        originalFileName: result.analysis.source.originalFileName,
-      },
+      source: serializeSource(result.analysis.source),
     },
   }
 }
