@@ -39,6 +39,7 @@ export type RecurrenceUnit = (typeof RECURRENCE_UNITS)[number]
 
 export const CreateCostRecurrenceSchema = z.object({
   costTypeId: z.string().cuid(),
+  existingCostId: z.string().cuid().optional(),
   amount: z.number().positive(),
   description: z.string().max(255).optional(),
   unit: z.enum(RECURRENCE_UNITS),
@@ -75,6 +76,7 @@ export const UpdateCostSchema = z.object({
   amount: z.number().positive().optional(),
   description: z.string().max(255).optional(),
   date: z.string().datetime().optional(),
+  recurrenceId: z.string().cuid().nullable().optional(),
 })
 export type UpdateCostInput = z.infer<typeof UpdateCostSchema>
 

@@ -1,9 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useEffectEvent, useState } from "react";
+import { useEffect, useEffectEvent, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Button, Card, useToast } from "rharuow-ds";
+import { Button, Card, Input, useToast } from "rharuow-ds";
 
 type BalancePayload = {
   balance: {
@@ -26,6 +26,7 @@ type LedgerPayload = {
 };
 
 const suggestedTopups = [5, 10, 20, 50];
+const MIN_TOPUP_AMOUNT = 3;
 
 function formatCurrency(value: string | number) {
   const numeric = Number(value);
@@ -46,6 +47,24 @@ function formatDate(value: string) {
   });
 }
 
+function parseTopupAmount(value: string | number) {
+  if (typeof value === "number") {
+    return Number.isFinite(value) ? value : Number.NaN;
+  }
+
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return Number.NaN;
+  }
+
+  const sanitized = trimmed.replace(/\s+/g, "").replace(/R\$/gi, "");
+  const normalized = sanitized.includes(",")
+    ? sanitized.replace(/\./g, "").replace(",", ".")
+    : sanitized;
+
+  return Number(normalized);
+}
+
 export function CreditsClient() {
   const toast = useToast();
   const router = useRouter();
@@ -53,7 +72,15 @@ export function CreditsClient() {
   const [balance, setBalance] = useState<BalancePayload["balance"] | null>(null);
   const [entries, setEntries] = useState<LedgerPayload["entries"]>([]);
   const [loading, setLoading] = useState(true);
-  const [processingAmount, setProcessingAmount] = useState<number | null>(null);
+  const [processingAmount, setProcessingAmount] = useState<string | null>(null);
+  const [customAmount, setCustomAmount] = useState("");
+  const handledReturnKeyRef = useRef<string | null>(null);
+  const parsedCustomAmount = parseTopupAmount(customAmount);
+  const customAmountKey = Number.isFinite(parsedCustomAmount) ? String(Number(parsedCustomAmount.toFixed(2))) : null;
+  const isCustomAmountValid =
+    Number.isFinite(parsedCustomAmount) && parsedCustomAmount >= MIN_TOPUP_AMOUNT;
+  const creditTopup = searchParams.get("credit_topup");
+  const creditTopupSessionId = searchParams.get("session_id");
 
   const loadCredits = useEffectEvent(async () => {
     setLoading(true);
@@ -87,29 +114,60 @@ export function CreditsClient() {
     void loadCredits();
   }, []);
 
-  useEffect(() => {
-    const creditTopup = searchParams.get("credit_topup");
-    if (!creditTopup) return;
+  const handleCreditTopupReturn = useEffectEvent(async (status: string, sessionId?: string | null) => {
+    if (status === "success") {
+      if (sessionId) {
+        const activationResponse = await fetch("/api/payments/activate", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ sessionId }),
+        });
 
-    if (creditTopup === "success") {
+        if (!activationResponse.ok) {
+          const activationData = (await activationResponse.json().catch(() => ({}))) as {
+            error?: string;
+          };
+          throw new Error(activationData.error ?? "Não foi possível confirmar a recarga.");
+        }
+      }
+
+      await loadCredits();
       toast.success("Pagamento confirmado. Atualizando seu saldo de créditos.");
-      void loadCredits();
     }
 
-    if (creditTopup === "cancelled") {
+    if (status === "cancelled") {
       toast.info("A recarga foi cancelada antes da confirmação do pagamento.");
     }
 
     router.replace("/dashboard/creditos");
-  }, [router, searchParams, toast]);
+  });
+
+  useEffect(() => {
+    if (!creditTopup) return;
+
+    const returnKey = `${creditTopup}:${creditTopupSessionId ?? ""}`;
+    if (handledReturnKeyRef.current === returnKey) {
+      return;
+    }
+
+    handledReturnKeyRef.current = returnKey;
+    void handleCreditTopupReturn(creditTopup, creditTopupSessionId);
+  }, [creditTopup, creditTopupSessionId]);
 
   async function handleTopup(amount: number) {
-    setProcessingAmount(amount);
+    const normalizedAmount = Number(amount.toFixed(2));
+
+    if (!Number.isFinite(normalizedAmount) || normalizedAmount < MIN_TOPUP_AMOUNT) {
+      toast.error(`Informe um valor minimo de ${formatCurrency(MIN_TOPUP_AMOUNT)}.`);
+      return;
+    }
+
+    setProcessingAmount(String(normalizedAmount));
     try {
       const response = await fetch("/api/credits/topups", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ amount }),
+        body: JSON.stringify({ amount: normalizedAmount }),
       });
       const data = (await response.json().catch(() => ({}))) as {
         checkoutUrl?: string;
@@ -127,6 +185,17 @@ export function CreditsClient() {
     } finally {
       setProcessingAmount(null);
     }
+  }
+
+  async function handleCustomTopup() {
+    const amount = parseTopupAmount(customAmount);
+
+    if (!Number.isFinite(amount)) {
+      toast.error("Informe um valor válido para a recarga.");
+      return;
+    }
+
+    await handleTopup(amount);
   }
 
   return (
@@ -160,10 +229,10 @@ export function CreditsClient() {
           <Card.Header>
             <div>
               <h2 className="text-lg font-semibold text-[var(--foreground)]">Recarregar créditos</h2>
-              <p className="text-sm text-slate-500">Checkout Stripe com cartão ou PIX.</p>
+              <p className="text-sm text-slate-500">Checkout Stripe com cartão e PIX quando disponível na sua conta.</p>
             </div>
           </Card.Header>
-          <Card.Body className="space-y-3">
+          <Card.Body className="flex flex-col gap-4">
             {suggestedTopups.map((amount) => (
               <Button
                 key={amount}
@@ -171,9 +240,34 @@ export function CreditsClient() {
                 disabled={processingAmount !== null}
                 className="w-full justify-center"
               >
-                {processingAmount === amount ? "Redirecionando…" : `Adicionar ${formatCurrency(amount)}`}
+                {processingAmount === String(amount) ? "Redirecionando…" : `Adicionar ${formatCurrency(amount)}`}
               </Button>
             ))}
+            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+              <div className="flex flex-col gap-3">
+                <Input
+                  name="customTopupAmount"
+                  label="Valor personalizado"
+                  placeholder="R$ 0,00"
+                  currency
+                  currencyCode="BRL"
+                  currencyLocale="pt-BR"
+                  currencyValueType="string"
+                  value={customAmount}
+                  onChange={(event) => setCustomAmount(event.target.value)}
+                />
+                <Button
+                  onClick={() => void handleCustomTopup()}
+                  disabled={processingAmount !== null || !isCustomAmountValid}
+                  className="w-full justify-center"
+                >
+                  {processingAmount !== null && processingAmount === customAmountKey ? "Redirecionando…" : "Adicionar"}
+                </Button>
+                <p className="text-xs text-slate-500">
+                  Valor minimo por recarga: {formatCurrency(MIN_TOPUP_AMOUNT)}.
+                </p>
+              </div>
+            </div>
             <Link href="/dashboard/relatorios" className="inline-flex text-sm font-semibold text-[var(--primary)] underline">
               Ir para análises on-demand
             </Link>

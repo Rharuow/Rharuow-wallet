@@ -9,6 +9,7 @@ declare module '@fastify/jwt' {
       sub: string
       email: string
       role: string
+      purpose?: 'notifications-ws'
     }
     user: {
       sub: string

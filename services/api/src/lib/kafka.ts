@@ -38,6 +38,52 @@ function shouldAutoEnsureTopics() {
   return process.env.KAFKA_AUTO_ENSURE_TOPICS !== 'false'
 }
 
+function isInvalidReplicationFactorError(error: unknown) {
+  if (!error || typeof error !== 'object') {
+    return false
+  }
+
+  const aggregateErrors = (error as { errors?: unknown[] }).errors
+  if (!Array.isArray(aggregateErrors)) {
+    return false
+  }
+
+  return aggregateErrors.some((innerError) => {
+    if (!innerError || typeof innerError !== 'object') {
+      return false
+    }
+
+    const typedInnerError = innerError as {
+      type?: string
+      code?: number
+      message?: string
+    }
+
+    return (
+      typedInnerError.type === 'INVALID_REPLICATION_FACTOR' ||
+      typedInnerError.code === 38 ||
+      typedInnerError.message?.includes('Replication-factor is invalid')
+    )
+  })
+}
+
+async function createTopicWithReplicationFactor(
+  kafkaAdmin: Admin,
+  topic: string,
+  replicationFactor: number,
+) {
+  await kafkaAdmin.createTopics({
+    waitForLeaders: true,
+    topics: [
+      {
+        topic,
+        numPartitions: getTopicPartitions(),
+        replicationFactor,
+      },
+    ],
+  })
+}
+
 async function getKafkaAdmin(): Promise<Admin> {
   if (!admin) {
     admin = kafka.admin()
@@ -60,16 +106,30 @@ export async function ensureKafkaTopic(topic: string): Promise<void> {
 
   const ensurePromise = (async () => {
     const kafkaAdmin = await getKafkaAdmin()
-    await kafkaAdmin.createTopics({
-      waitForLeaders: true,
-      topics: [
-        {
+    const preferredReplicationFactor = getTopicReplicationFactor()
+
+    try {
+      await createTopicWithReplicationFactor(
+        kafkaAdmin,
+        topic,
+        preferredReplicationFactor,
+      )
+    } catch (error) {
+      if (
+        preferredReplicationFactor > 1 &&
+        isInvalidReplicationFactorError(error)
+      ) {
+        console.warn('[kafka] topic-create-retry-single-replica', {
           topic,
-          numPartitions: getTopicPartitions(),
-          replicationFactor: getTopicReplicationFactor(),
-        },
-      ],
-    })
+          preferredReplicationFactor,
+          fallbackReplicationFactor: 1,
+        })
+        await createTopicWithReplicationFactor(kafkaAdmin, topic, 1)
+      } else {
+        throw error
+      }
+    }
+
     ensuredTopics.add(topic)
   })()
 

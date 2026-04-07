@@ -3,6 +3,7 @@ import Fastify, { FastifyRequest } from 'fastify'
 import cors from '@fastify/cors'
 import helmet from '@fastify/helmet'
 import jwt from '@fastify/jwt'
+import websocket from '@fastify/websocket'
 import swagger from '@fastify/swagger'
 import swaggerUi from '@fastify/swagger-ui'
 import { ZodError } from 'zod'
@@ -60,6 +61,8 @@ export async function buildServer() {
   await server.register(jwt, {
     secret: process.env.JWT_SECRET!,
   })
+
+  await server.register(websocket)
 
   if (process.env.NODE_ENV !== 'test') {
     await server.register(swagger, {

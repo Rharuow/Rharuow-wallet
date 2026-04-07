@@ -180,7 +180,7 @@ export function OnDemandReportCard({
   initialTicker = "",
   editable = false,
   title = "Relatório on-demand",
-  subtitle = "Busca automática do documento-base, reuso inteligente e acesso por 30 dias, com cobrança apenas em sucesso final.",
+  subtitle = "",
 }: {
   initialAssetType?: AssetType;
   initialTicker?: string;

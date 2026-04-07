@@ -209,6 +209,14 @@ export function CostTableRow({ cost, localAreas, localTypes, edit, lists, onDele
                   onChange={(e) => edit.setEditDescription(e.target.value)}
                   containerClassName="mb-0"
                 />
+                <div className="pt-1">
+                  <Switch
+                    checked={edit.editIsRecurring}
+                    onChange={edit.setEditIsRecurring}
+                    label="Recorrente"
+                    labelPosition="right"
+                  />
+                </div>
                 {edit.editError && (
                   <span className="text-xs text-red-500">{edit.editError}</span>
                 )}
@@ -270,7 +278,7 @@ export function CostTableRow({ cost, localAreas, localTypes, edit, lists, onDele
         )}
       </Table.Row>
 
-      {isEditing && edit.editRecurrenceId && (
+      {isEditing && edit.editIsRecurring && (
         <Table.Row>
           <Table.Cell colSpan={6} className="bg-slate-50 dark:bg-slate-900/50 px-4 pb-4">
             <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-400">

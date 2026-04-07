@@ -14,7 +14,7 @@ export default function ReportsPage() {
         </p>
       </div>
 
-      <OnDemandReportCard editable title="Consultar relatório por ticker" subtitle="A busca automática localiza uma fonte confiável, reaproveita análises compatíveis e libera acesso temporário por 30 dias. Quando isso falhar, o fallback manual assume o fluxo sem bloquear novos jobs." />
+      <OnDemandReportCard editable title="Consultar relatório por ticker" />
     </div>
   );
 }

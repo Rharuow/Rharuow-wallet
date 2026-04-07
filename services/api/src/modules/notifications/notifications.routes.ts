@@ -1,7 +1,10 @@
 import { NotificationType } from '@prisma/client'
+import fastifyWebsocket = require('@fastify/websocket')
 import { FastifyInstance, FastifyReply } from 'fastify'
+import { z } from 'zod'
 import { authenticate } from '../../plugins/authenticate'
 import { NotificationIdParamsSchema, NotificationsQuerySchema } from './notifications.schema'
+import { registerNotificationsSocket } from './notifications-realtime'
 import {
   deleteNotification,
   getUnreadNotificationsCount,
@@ -14,6 +17,10 @@ function handleServiceError(err: unknown, reply: FastifyReply) {
   const error = err as Error & { statusCode?: number }
   return reply.status(error.statusCode ?? 500).send({ error: error.message })
 }
+
+const NotificationsSocketQuerySchema = z.object({
+  token: z.string().min(1),
+})
 
 export async function notificationsRoutes(fastify: FastifyInstance) {
   fastify.get('/', {
@@ -49,6 +56,46 @@ export async function notificationsRoutes(fastify: FastifyInstance) {
   }, async (request, reply) => {
     const unreadCount = await getUnreadNotificationsCount(request.user.sub)
     return reply.send({ unreadCount })
+  })
+
+  fastify.get('/ws-token', {
+    preHandler: authenticate,
+    schema: {
+      tags: ['Notifications'],
+      summary: 'Emitir token de curta duração para websocket de notificações',
+      security: [{ bearerAuth: [] }],
+    },
+  }, async (request, reply) => {
+    const token = await reply.jwtSign(
+      {
+        sub: request.user.sub,
+        email: request.user.email,
+        role: request.user.role,
+        purpose: 'notifications-ws',
+      },
+      { expiresIn: '15m' },
+    )
+
+    return reply.send({ token, expiresInSeconds: 900 })
+  })
+
+  fastify.get('/ws', { websocket: true }, async (connection: fastifyWebsocket.SocketStream, request) => {
+    try {
+      const query = NotificationsSocketQuerySchema.parse(request.query)
+      const payload = await fastify.jwt.verify<{
+        sub: string
+        purpose?: string
+      }>(query.token)
+
+      if (payload.purpose !== 'notifications-ws' || !payload.sub) {
+        connection.socket.close(1008, 'Unauthorized')
+        return
+      }
+
+      registerNotificationsSocket(payload.sub, connection.socket)
+    } catch {
+      connection.socket.close(1008, 'Unauthorized')
+    }
   })
 
   fastify.patch<{ Params: { id: string } }>('/:id/read', {

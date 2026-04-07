@@ -163,6 +163,46 @@ export async function createRecurrence(userId: string, data: CreateCostRecurrenc
   const startDate = new Date(data.startDate)
   const nextDate = calcNextDate(startDate, data.unit, data.interval)
 
+  if (data.existingCostId) {
+    const existingCost = await prisma.cost.findFirst({
+      where: { id: data.existingCostId, userId, deletedAt: null },
+    })
+
+    if (!existingCost) {
+      throw Object.assign(new Error('COST_NOT_FOUND'), { statusCode: 404 })
+    }
+
+    return prisma.$transaction(async (tx) => {
+      const recurrence = await tx.costRecurrence.create({
+        data: {
+          userId,
+          costTypeId: data.costTypeId,
+          amount: data.amount,
+          description: data.description,
+          unit: data.unit,
+          interval: data.interval,
+          startDate,
+          nextDate,
+          maxOccurrences: data.maxOccurrences ?? null,
+          occurrenceCount: 1,
+        },
+      })
+
+      await tx.cost.update({
+        where: { id: data.existingCostId },
+        data: {
+          costTypeId: data.costTypeId,
+          amount: data.amount,
+          description: data.description,
+          date: startDate,
+          recurrenceId: recurrence.id,
+        },
+      })
+
+      return recurrence
+    })
+  }
+
   // Cria a regra e já registra a primeira ocorrência
   return prisma.$transaction(async (tx) => {
     const recurrence = await tx.costRecurrence.create({
@@ -303,6 +343,16 @@ export async function updateCost(userId: string, costId: string, data: UpdateCos
     if (!type) throw Object.assign(new Error('TYPE_NOT_FOUND'), { statusCode: 404 })
   }
 
+  if (data.recurrenceId) {
+    const recurrence = await prisma.costRecurrence.findFirst({
+      where: { id: data.recurrenceId, userId, deletedAt: null },
+    })
+
+    if (!recurrence) {
+      throw Object.assign(new Error('RECURRENCE_NOT_FOUND'), { statusCode: 404 })
+    }
+  }
+
   return prisma.cost.update({
     where: { id: costId },
     data: {
@@ -310,6 +360,7 @@ export async function updateCost(userId: string, costId: string, data: UpdateCos
       amount: data.amount,
       description: data.description,
       date: data.date ? new Date(data.date) : undefined,
+      recurrenceId: data.recurrenceId,
     },
   })
 }

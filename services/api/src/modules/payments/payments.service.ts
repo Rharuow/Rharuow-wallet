@@ -6,8 +6,126 @@ import { syncWalletAccessPermissionsForUser } from '../wallet-sharing/wallet-sha
 
 const APP_URL = process.env.APP_URL ?? 'http://localhost:3000'
 const MIN_CREDIT_TOPUP_AMOUNT = 3
+const SUPPORTED_CREDIT_TOPUP_PAYMENT_METHOD_TYPES = ['card', 'pix'] as const
 
 type StripeClient = Pick<typeof stripe, 'checkout' | 'customers' | 'subscriptions' | 'webhooks'>
+type CreditTopupPaymentMethodType =
+  Stripe.Checkout.SessionCreateParams.PaymentMethodType
+
+function toStatusError(message: string, statusCode: number) {
+  return Object.assign(new Error(message), { statusCode })
+}
+
+function isStripeLikeError(error: unknown): error is {
+  message?: string
+  statusCode?: number
+  rawStatusCode?: number
+  code?: string
+  type?: string
+} {
+  if (!error || typeof error !== 'object') {
+    return false
+  }
+
+  return (
+    'rawStatusCode' in error ||
+    'statusCode' in error ||
+    'code' in error ||
+    'type' in error
+  )
+}
+
+function toCheckoutCreationError(error: unknown) {
+  if (!isStripeLikeError(error)) {
+    return error
+  }
+
+  const statusCode = error.rawStatusCode ?? error.statusCode ?? 502
+  const fallbackMessage = 'Nao foi possivel iniciar o checkout da recarga.'
+  const rawMessage = typeof error.message === 'string' ? error.message.trim() : ''
+  const message = rawMessage || fallbackMessage
+
+  return toStatusError(message, statusCode)
+}
+
+function getCreditTopupPaymentMethodTypes(): CreditTopupPaymentMethodType[] {
+  const raw = process.env.STRIPE_CREDIT_TOPUP_PAYMENT_METHOD_TYPES ?? 'card,pix'
+  const methods = raw
+    .split(',')
+    .map((value) => value.trim().toLowerCase())
+    .filter((value): value is (typeof SUPPORTED_CREDIT_TOPUP_PAYMENT_METHOD_TYPES)[number] =>
+      SUPPORTED_CREDIT_TOPUP_PAYMENT_METHOD_TYPES.includes(
+        value as (typeof SUPPORTED_CREDIT_TOPUP_PAYMENT_METHOD_TYPES)[number],
+      ),
+    )
+
+  if (methods.length === 0) {
+    return ['card']
+  }
+
+  return [...new Set(methods)]
+}
+
+function shouldRetryCreditTopupWithoutPix(
+  error: unknown,
+  paymentMethodTypes: CreditTopupPaymentMethodType[],
+) {
+  if (!paymentMethodTypes.includes('pix') || !isStripeLikeError(error)) {
+    return false
+  }
+
+  const message = typeof error.message === 'string' ? error.message.toLowerCase() : ''
+
+  return (
+    error.code === 'payment_method_unavailable' ||
+    message.includes('payment method type provided: pix is invalid') ||
+    message.includes('pix is invalid') ||
+    message.includes('pix indisponivel')
+  )
+}
+
+async function createCreditTopupStripeCheckoutSession(
+  stripeClient: StripeClient,
+  customerId: string,
+  orderId: string,
+  userId: string,
+  amount: number,
+  unitAmount: number,
+  paymentMethodTypes: CreditTopupPaymentMethodType[],
+) {
+  return stripeClient.checkout.sessions.create({
+    customer: customerId,
+    mode: 'payment',
+    client_reference_id: orderId,
+    payment_method_types: paymentMethodTypes,
+    line_items: [
+      {
+        quantity: 1,
+        price_data: {
+          currency: 'brl',
+          unit_amount: unitAmount,
+          product_data: {
+            name: `Recarga de creditos - R$ ${amount.toFixed(2)}`,
+          },
+        },
+      },
+    ],
+    success_url: `${APP_URL}/dashboard/creditos?credit_topup=success&session_id={CHECKOUT_SESSION_ID}`,
+    cancel_url: `${APP_URL}/dashboard/creditos?credit_topup=cancelled`,
+    metadata: {
+      kind: 'CREDIT_TOPUP',
+      userId,
+      topupOrderId: orderId,
+    },
+    payment_intent_data: {
+      metadata: {
+        kind: 'CREDIT_TOPUP',
+        userId,
+        topupOrderId: orderId,
+      },
+    },
+  })
+}
 
 async function ensureStripeCustomer(userId: string, stripeClient: StripeClient = stripe) {
   const user = await prisma.user.findUniqueOrThrow({
@@ -54,48 +172,57 @@ export async function createCreditTopupCheckoutSession(
   stripeClient: StripeClient = stripe,
 ) {
   if (amount < MIN_CREDIT_TOPUP_AMOUNT) {
-    const err = new Error('INVALID_TOPUP_AMOUNT') as Error & { statusCode: number }
-    err.statusCode = 400
-    throw err
+    throw toStatusError('Valor minimo de recarga: R$ 3,00', 400)
   }
 
   const { customerId } = await ensureStripeCustomer(userId, stripeClient)
   const order = await createCreditTopupOrder({ userId, amount })
   const unitAmount = Math.round(amount * 100)
+  const configuredPaymentMethodTypes = getCreditTopupPaymentMethodTypes()
 
   try {
-    const session = await stripeClient.checkout.sessions.create({
-      customer: customerId,
-      mode: 'payment',
-      client_reference_id: order.id,
-      payment_method_types: ['card', 'pix'],
-      line_items: [
-        {
-          quantity: 1,
-          price_data: {
-            currency: 'brl',
-            unit_amount: unitAmount,
-            product_data: {
-              name: `Recarga de creditos - R$ ${amount.toFixed(2)}`,
-            },
-          },
-        },
-      ],
-      success_url: `${APP_URL}/dashboard/creditos?credit_topup=success&session_id={CHECKOUT_SESSION_ID}`,
-      cancel_url: `${APP_URL}/dashboard/creditos?credit_topup=cancelled`,
-      metadata: {
-        kind: 'CREDIT_TOPUP',
+    let session
+
+    try {
+      session = await createCreditTopupStripeCheckoutSession(
+        stripeClient,
+        customerId,
+        order.id,
         userId,
-        topupOrderId: order.id,
-      },
-      payment_intent_data: {
-        metadata: {
-          kind: 'CREDIT_TOPUP',
+        amount,
+        unitAmount,
+        configuredPaymentMethodTypes,
+      )
+    } catch (error) {
+      const fallbackPaymentMethodTypes = configuredPaymentMethodTypes.filter(
+        (paymentMethodType) => paymentMethodType !== 'pix',
+      )
+
+      if (
+        fallbackPaymentMethodTypes.length > 0 &&
+        shouldRetryCreditTopupWithoutPix(error, configuredPaymentMethodTypes)
+      ) {
+        console.warn('[payments] credit-topup-checkout-retrying-without-pix', {
           userId,
-          topupOrderId: order.id,
-        },
-      },
-    })
+          orderId: order.id,
+          originalPaymentMethodTypes: configuredPaymentMethodTypes,
+          fallbackPaymentMethodTypes,
+          reason: error instanceof Error ? error.message : 'UNKNOWN_ERROR',
+        })
+
+        session = await createCreditTopupStripeCheckoutSession(
+          stripeClient,
+          customerId,
+          order.id,
+          userId,
+          amount,
+          unitAmount,
+          fallbackPaymentMethodTypes,
+        )
+      } else {
+        throw error
+      }
+    }
 
     const updatedOrder = await prisma.creditTopupOrder.update({
       where: { id: order.id },
@@ -118,7 +245,7 @@ export async function createCreditTopupCheckoutSession(
         },
       },
     })
-    throw error
+    throw toCheckoutCreationError(error)
   }
 }
 
@@ -171,8 +298,12 @@ export async function getPaymentStatus(userId: string) {
 
 // ---- Ativação via session (fallback para dev sem webhook) ----
 
-export async function activateFromSession(userId: string, sessionId: string) {
-  const session = await stripe.checkout.sessions.retrieve(sessionId, {
+export async function activateFromSession(
+  userId: string,
+  sessionId: string,
+  stripeClient: StripeClient = stripe,
+) {
+  const session = await stripeClient.checkout.sessions.retrieve(sessionId, {
     expand: ['subscription'],
   })
 
@@ -191,6 +322,27 @@ export async function activateFromSession(userId: string, sessionId: string) {
   if (session.customer !== user.stripeCustomerId) {
     const err = new Error('Sessão não corresponde ao usuário autenticado') as Error & { statusCode: number }
     err.statusCode = 403
+    throw err
+  }
+
+  if (session.mode === 'payment' && session.metadata?.kind === 'CREDIT_TOPUP') {
+    await handleCreditTopupCheckoutSessionCompleted(session, `manual-activate:${session.id}`)
+
+    const balance = await prisma.userCreditBalance.findUnique({
+      where: { userId },
+      select: { balance: true, updatedAt: true },
+    })
+
+    return {
+      kind: 'CREDIT_TOPUP',
+      credited: session.payment_status === 'paid',
+      balance,
+    }
+  }
+
+  if (session.mode !== 'subscription' || !session.subscription) {
+    const err = new Error('Sessão de checkout não suporta ativação manual') as Error & { statusCode: number }
+    err.statusCode = 400
     throw err
   }
 

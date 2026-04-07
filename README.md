@@ -706,11 +706,12 @@ Localização sugerida: `services/api/src/modules/notifications/`
 |---|---|---|
 | `GET` | `/v1/notifications` | Lista notificações do usuário autenticado (paginado, mais recentes primeiro) |
 | `GET` | `/v1/notifications/unread-count` | Retorna `{ count: number }` — usado para o badge do sino |
+| `GET` | `/v1/notifications/ws-token` | Emite token de curta duração para o canal WebSocket autenticado |
 | `PATCH` | `/v1/notifications/:id/read` | Marca uma notificação como lida |
-| `PATCH` | `/v1/notifications/read-all` | Marca todas como lidas |
+| `POST` | `/v1/notifications/read-all` | Marca todas como lidas |
 | `DELETE` | `/v1/notifications/:id` | Remove uma notificação |
 
-> **Polling vs. SSE:** para o MVP, o frontend faz polling no endpoint `unread-count` a cada 30 segundos. SSE/WebSocket pode ser adicionado futuramente sem quebrar a interface.
+> **Tempo real:** o badge do sino recebe atualização por WebSocket autenticado. O endpoint `unread-count` continua disponível como fallback e para usos pontuais do frontend.
 
 #### Novo módulo: `wallet-sharing`
 

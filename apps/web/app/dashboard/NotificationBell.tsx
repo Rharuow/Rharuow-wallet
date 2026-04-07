@@ -10,6 +10,23 @@ import {
   type NotificationItem,
 } from "@/lib/notifications";
 
+type NotificationsSocketTokenResponse = {
+  token?: string;
+  expiresInSeconds?: number;
+  error?: string;
+};
+
+type NotificationsSocketMessage = {
+  type?: string;
+  unreadCount?: number;
+};
+
+function buildNotificationsSocketUrl(token: string) {
+  const apiBase = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001";
+  const wsBase = apiBase.replace(/^http/, "ws");
+  return `${wsBase}/v1/notifications/ws?token=${encodeURIComponent(token)}`;
+}
+
 function BellIcon() {
   return (
     <svg
@@ -55,26 +72,93 @@ export function NotificationBell() {
     if (!mounted) return;
 
     let cancelled = false;
+    let socket: WebSocket | null = null;
+    let reconnectTimeout: number | null = null;
+    let reconnectAttempt = 0;
 
-    async function loadUnreadCount() {
-      const response = await fetch("/api/notifications/unread-count", {
-        cache: "no-store",
-      });
-      const data = await response.json().catch(() => ({}));
+    async function loadUnreadCountFallback() {
+      try {
+        const response = await fetch("/api/notifications/unread-count", {
+          cache: "no-store",
+        });
+        const data = await response.json().catch(() => ({}));
 
-      if (!cancelled && response.ok) {
-        setUnreadCount(data.unreadCount ?? 0);
+        if (!cancelled && response.ok) {
+          setUnreadCount(data.unreadCount ?? 0);
+        }
+      } catch {
+        return;
       }
     }
 
-    void loadUnreadCount();
-    const interval = window.setInterval(() => {
-      void loadUnreadCount();
-    }, 15000);
+    function scheduleReconnect() {
+      if (cancelled || reconnectTimeout !== null) {
+        return;
+      }
+
+      const delay = Math.min(30000, 1000 * 2 ** Math.min(reconnectAttempt, 4));
+      reconnectAttempt += 1;
+      reconnectTimeout = window.setTimeout(() => {
+        reconnectTimeout = null;
+        void connect();
+      }, delay);
+    }
+
+    async function connect() {
+      try {
+        const tokenResponse = await fetch("/api/notifications/socket-token", {
+          cache: "no-store",
+        });
+        const tokenData = (await tokenResponse.json().catch(() => ({}))) as NotificationsSocketTokenResponse;
+
+        if (!tokenResponse.ok || !tokenData.token) {
+          await loadUnreadCountFallback();
+          scheduleReconnect();
+          return;
+        }
+
+        socket = new WebSocket(buildNotificationsSocketUrl(tokenData.token));
+
+        socket.addEventListener("open", () => {
+          reconnectAttempt = 0;
+        });
+
+        socket.addEventListener("message", (event) => {
+          if (cancelled) {
+            return;
+          }
+
+          const data = JSON.parse(String(event.data)) as NotificationsSocketMessage;
+          if (data.type === "notifications.unread_count") {
+            setUnreadCount(data.unreadCount ?? 0);
+          }
+        });
+
+        socket.addEventListener("error", () => {
+          socket?.close();
+        });
+
+        socket.addEventListener("close", () => {
+          socket = null;
+          if (!cancelled) {
+            void loadUnreadCountFallback();
+            scheduleReconnect();
+          }
+        });
+      } catch {
+        await loadUnreadCountFallback();
+        scheduleReconnect();
+      }
+    }
+
+    void connect();
 
     return () => {
       cancelled = true;
-      window.clearInterval(interval);
+      if (reconnectTimeout !== null) {
+        window.clearTimeout(reconnectTimeout);
+      }
+      socket?.close();
     };
   }, [mounted]);
 

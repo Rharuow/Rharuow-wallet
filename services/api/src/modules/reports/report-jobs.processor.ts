@@ -24,16 +24,34 @@ export async function processReportAnalysisRequestedJob(payload: {
   ticker: string
   requestMode: ReportAnalysisRequestMode
 }) {
+  console.info('[report-jobs.processor] start', {
+    jobId: payload.jobId,
+    userId: payload.userId,
+    ticker: payload.ticker,
+    assetType: payload.assetType,
+    requestMode: payload.requestMode,
+  })
+
   const job = await getReportAnalysisJobById(payload.jobId)
   if (!job) {
+    console.warn('[report-jobs.processor] skip-job-not-found', { jobId: payload.jobId })
     return
   }
 
   if (job.status !== ReportAnalysisJobStatus.QUEUED) {
+    console.warn('[report-jobs.processor] skip-job-not-queued', {
+      jobId: payload.jobId,
+      currentStatus: job.status,
+    })
     return
   }
 
   if (payload.requestMode === ReportAnalysisRequestMode.AUTO_WEB) {
+    console.info('[report-jobs.processor] transition', {
+      jobId: job.id,
+      from: job.status,
+      to: ReportAnalysisJobStatus.SEARCHING_REPORT,
+    })
     await updateReportAnalysisJobStatus({
       jobId: job.id,
       status: ReportAnalysisJobStatus.SEARCHING_REPORT,
@@ -52,6 +70,11 @@ export async function processReportAnalysisRequestedJob(payload: {
         analysisId: result.analysis.id,
         sourceId: result.analysis.source.id,
         priceCharged: result.chargedAmount,
+      })
+      console.info('[report-jobs.processor] transition', {
+        jobId: job.id,
+        to: ReportAnalysisJobStatus.COMPLETED,
+        analysisId: result.analysis.id,
       })
       return
     } catch (error) {
@@ -75,6 +98,11 @@ export async function processReportAnalysisRequestedJob(payload: {
           failureCode: err.message,
           failureMessage: 'Fonte indisponivel para busca automatica.',
         })
+        console.warn('[report-jobs.processor] transition', {
+          jobId: job.id,
+          to: ReportAnalysisJobStatus.SEARCH_UNAVAILABLE,
+          failureCode: err.message,
+        })
         return
       }
 
@@ -83,6 +111,11 @@ export async function processReportAnalysisRequestedJob(payload: {
         status: ReportAnalysisJobStatus.FAILED,
         failureCode: err.message,
         failureMessage: err.message,
+      })
+      console.error('[report-jobs.processor] transition', {
+        jobId: job.id,
+        to: ReportAnalysisJobStatus.FAILED,
+        failureCode: err.message,
       })
       return
     }
@@ -93,6 +126,11 @@ export async function processReportAnalysisRequestedJob(payload: {
   const contentType = typeof metadata.contentType === 'string' ? metadata.contentType : undefined
   const storageKey = typeof metadata.storageKey === 'string' ? metadata.storageKey : null
 
+  console.info('[report-jobs.processor] transition', {
+    jobId: job.id,
+    from: job.status,
+    to: ReportAnalysisJobStatus.VALIDATING_REPORT,
+  })
   await updateReportAnalysisJobStatus({
     jobId: job.id,
     status: ReportAnalysisJobStatus.VALIDATING_REPORT,
@@ -105,9 +143,18 @@ export async function processReportAnalysisRequestedJob(payload: {
       failureCode: 'MANUAL_REPORT_METADATA_MISSING',
       failureMessage: 'Metadados insuficientes para processar upload manual.',
     })
+    console.error('[report-jobs.processor] transition', {
+      jobId: job.id,
+      to: ReportAnalysisJobStatus.FAILED,
+      failureCode: 'MANUAL_REPORT_METADATA_MISSING',
+    })
     return
   }
 
+  console.info('[report-jobs.processor] transition', {
+    jobId: job.id,
+    to: ReportAnalysisJobStatus.ANALYZING_REPORT,
+  })
   await updateReportAnalysisJobStatus({
     jobId: job.id,
     status: ReportAnalysisJobStatus.ANALYZING_REPORT,
@@ -130,6 +177,11 @@ export async function processReportAnalysisRequestedJob(payload: {
       sourceId: result.analysis.source.id,
       priceCharged: result.chargedAmount,
     })
+    console.info('[report-jobs.processor] transition', {
+      jobId: job.id,
+      to: ReportAnalysisJobStatus.COMPLETED,
+      analysisId: result.analysis.id,
+    })
   } catch (error) {
     const err = error as Error
     await updateReportAnalysisJobStatus({
@@ -137,6 +189,11 @@ export async function processReportAnalysisRequestedJob(payload: {
       status: ReportAnalysisJobStatus.FAILED,
       failureCode: err.message,
       failureMessage: err.message,
+    })
+    console.error('[report-jobs.processor] transition', {
+      jobId: job.id,
+      to: ReportAnalysisJobStatus.FAILED,
+      failureCode: err.message,
     })
   }
 }
