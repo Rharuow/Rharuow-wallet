@@ -38,7 +38,8 @@ export async function buildServer() {
           },
   })
 
-  console.log(`REPORT_AUTO_WEB_SEARCH_ENABLED = ${process.env.REPORT_AUTO_WEB_SEARCH_ENABLED}`);
+  console.log(`REPORT_AUTO_WEB_SEARCH_ENABLED = ${process.env.REPORT_AUTO_WEB_SEARCH_ENABLED}`)
+  console.log(`OPENAI_MOCK_MODE = ${process.env.OPENAI_MOCK_MODE}`)
   
 
   server.addContentTypeParser(

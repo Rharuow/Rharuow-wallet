@@ -11,6 +11,7 @@ import {
 import {
   createManualReportAnalysis,
   createOnDemandReportAnalysis,
+  mergeResolvedReportSourceWithStructuredFallback,
 } from '../modules/reports/reports.service'
 import {
   cleanupTestData,
@@ -262,6 +263,50 @@ test('reports-on-demand.spec: anexa apêndice de valuation com Graham e Bazin ao
 
   assert.match(result.analysis.analysisText, /Fórmula de Graham: preço justo estimado em R\$ 42,10\./)
   assert.match(result.analysis.analysisText, /Fórmula de Bazin: preço justo estimado em R\$ 37,80\./)
+})
+
+test('reports-on-demand.spec: combina RI oficial com dados estruturados de fallback no prompt final', () => {
+  const merged = mergeResolvedReportSourceWithStructuredFallback(
+    {
+      assetType: AssetReportAssetType.STOCK,
+      ticker: 'PETR4',
+      sourceKind: 'AUTO_FOUND' as const,
+      sourceUrl: 'https://ri.example.com/petr4-release.pdf',
+      documentFingerprint: 'official-fingerprint',
+      metadata: {
+        discoveryMethod: 'OFFICIAL_IR_WEB_SEARCH',
+        title: 'Release oficial',
+      },
+      promptContext: 'Resumo oficial de RI com foco qualitativo.',
+    },
+    {
+      assetType: AssetReportAssetType.STOCK,
+      ticker: 'PETR4',
+      sourceKind: 'AUTO_FOUND' as const,
+      sourceUrl: 'https://brapi.dev/quote/PETR4',
+      documentFingerprint: 'structured-fingerprint',
+      metadata: {
+        provider: 'BRAPI',
+      },
+      promptContext: 'Documento-base:\n- P/L: 4.20\n- Receita: R$ 10,00\n- EBITDA: R$ 8,00',
+    },
+  )
+
+  assert.equal(merged.sourceUrl, 'https://ri.example.com/petr4-release.pdf')
+  assert.notEqual(merged.documentFingerprint, 'official-fingerprint')
+  assert.match(merged.promptContext, /Resumo oficial de RI com foco qualitativo\./)
+  assert.match(merged.promptContext, /Dados estruturados complementares do BRAPI/)
+  assert.match(merged.promptContext, /P\/L: 4\.20/)
+
+  const metadata = merged.metadata as {
+    supplementalSource?: {
+      provider?: string
+      sourceUrl?: string | null
+    }
+  }
+
+  assert.equal(metadata.supplementalSource?.provider, 'BRAPI')
+  assert.equal(metadata.supplementalSource?.sourceUrl, 'https://brapi.dev/quote/PETR4')
 })
 
 test('reports-on-demand.spec: upload manual gera análise, reaproveita fingerprint e não cobra arquivo inválido', async () => {

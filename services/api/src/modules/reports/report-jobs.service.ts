@@ -86,6 +86,18 @@ export async function listReportAnalysisJobs(userId: string) {
   })
 }
 
+export async function listQueuedReportAnalysisJobs(limit = 100) {
+  return prisma.reportAnalysisJob.findMany({
+    where: {
+      status: ReportAnalysisJobStatus.QUEUED,
+    },
+    orderBy: {
+      createdAt: 'asc',
+    },
+    take: limit,
+  })
+}
+
 export async function getReportAnalysisJobById(jobId: string) {
   return prisma.reportAnalysisJob.findUnique({
     where: { id: jobId },

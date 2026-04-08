@@ -5,12 +5,48 @@ import {
   parseReportAnalysisRequestedPayload,
 } from '../modules/reports/report-jobs.queue'
 import { processReportAnalysisRequestedJob } from '../modules/reports/report-jobs.processor'
+import { listQueuedReportAnalysisJobs } from '../modules/reports/report-jobs.service'
 
 const groupId = process.env.KAFKA_REPORT_ANALYSIS_GROUP_ID ?? 'rharuow.report-analysis.worker.v1'
 const brokers = (process.env.KAFKA_BROKERS ?? 'localhost:9092')
   .split(',')
   .map((value) => value.trim())
   .filter(Boolean)
+
+async function recoverQueuedJobsOnStartup() {
+  const queuedJobs = await listQueuedReportAnalysisJobs()
+
+  if (queuedJobs.length === 0) {
+    console.info('[report-analysis-worker] recovery-scan-empty')
+    return
+  }
+
+  console.info('[report-analysis-worker] recovery-scan-found', {
+    queuedJobs: queuedJobs.length,
+  })
+
+  for (const job of queuedJobs) {
+    try {
+      await processReportAnalysisRequestedJob({
+        jobId: job.id,
+        userId: job.userId,
+        assetType: job.assetType,
+        ticker: job.ticker,
+        requestMode: job.requestMode,
+      })
+      console.info('[report-analysis-worker] recovery-job-processed', {
+        jobId: job.id,
+        requestMode: job.requestMode,
+      })
+    } catch (error) {
+      console.error('[report-analysis-worker] recovery-job-failed', {
+        jobId: job.id,
+        requestMode: job.requestMode,
+        error: (error as Error).message,
+      })
+    }
+  }
+}
 
 async function bootstrap() {
   console.info('[report-analysis-worker] startup', {
@@ -35,6 +71,8 @@ async function bootstrap() {
     topic: REPORT_ANALYSIS_REQUESTED_TOPIC,
     fromBeginning: false,
   })
+
+  await recoverQueuedJobsOnStartup()
 
   await consumer.run({
     eachMessage: async ({ message }) => {

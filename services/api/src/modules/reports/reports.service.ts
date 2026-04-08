@@ -10,6 +10,7 @@ import {
   Prisma,
 } from '@prisma/client'
 import { getObject, putObject } from '../../lib/object-storage'
+import { isOpenAiMockEnabled } from '../../lib/openai-mode'
 import { prisma } from '../../lib/prisma'
 import { getCreditBalance } from '../credits/credits.service'
 import { getFii } from '../fiis/fiis.service'
@@ -48,6 +49,10 @@ type ResolvedReportSource = {
   documentFingerprint: string
   metadata: JsonValue
   promptContext: string
+}
+
+function isJsonObject(value: JsonValue): value is Record<string, JsonValue> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
 
 type ReportRuntime = {
@@ -292,6 +297,43 @@ function appendValuationAppendix(analysisText: string, appendixBullets: string[]
   return `${analysisText.trim()}\n${normalizedBullets.join('\n')}`
 }
 
+export function mergeResolvedReportSourceWithStructuredFallback(
+  primarySource: ResolvedReportSource,
+  supplementalSource: ResolvedReportSource,
+): ResolvedReportSource {
+  const supplementalProvider = supplementalSource.assetType === AssetReportAssetType.STOCK
+    ? 'BRAPI'
+    : 'FUNDAMENTUS'
+  const mergedPrimaryMetadata = isJsonObject(primarySource.metadata)
+    ? primarySource.metadata
+    : { primaryMetadata: primarySource.metadata }
+
+  return {
+    ...primarySource,
+    documentFingerprint: hashFingerprint({
+      primaryFingerprint: primarySource.documentFingerprint,
+      supplementalFingerprint: supplementalSource.documentFingerprint,
+    }),
+    metadata: {
+      ...mergedPrimaryMetadata,
+      supplementalSource: {
+        provider: supplementalProvider,
+        sourceUrl: supplementalSource.sourceUrl ?? null,
+        metadata: supplementalSource.metadata,
+      },
+    },
+    promptContext: [
+      primarySource.promptContext.trim(),
+      '',
+      supplementalSource.assetType === AssetReportAssetType.STOCK
+        ? 'Dados estruturados complementares do BRAPI: use estes campos para preencher lacunas de demonstracoes financeiras, valuation, dividendos e indicadores quando o resumo oficial nao trouxer detalhes suficientes.'
+        : 'Dados estruturados complementares do Fundamentus: use estes campos para preencher lacunas de renda, vacancia, cap rate, portfolio e valuation quando o resumo oficial nao trouxer detalhes suficientes.',
+      '',
+      supplementalSource.promptContext.trim(),
+    ].join('\n'),
+  }
+}
+
 async function resolveStockAutoSource(ticker: string): Promise<ResolvedReportSource | null> {
   const stock = await getStockDetail(ticker)
   if (!stock) {
@@ -390,6 +432,62 @@ async function defaultResolveWebSearchSource(input: {
   assetType: AssetReportAssetType
   ticker: string
 }): Promise<ResolvedReportSource | null> {
+  if (isOpenAiMockEnabled()) {
+    const sourceUrl = input.assetType === AssetReportAssetType.FII
+      ? `https://mock.ri.local/${input.ticker.toLowerCase()}/relatorio-gerencial`
+      : `https://mock.ri.local/${input.ticker.toLowerCase()}/relacoes-com-investidores`
+    const title = input.assetType === AssetReportAssetType.FII
+      ? `Relatório gerencial mock de ${input.ticker}`
+      : `Central de resultados mock de ${input.ticker}`
+    const publisher = input.assetType === AssetReportAssetType.FII ? 'Gestora mock' : 'RI mock'
+    const sourceType = input.assetType === AssetReportAssetType.FII ? 'RELATORIO_GERENCIAL' : 'RESULTADOS_TRIMESTRAIS'
+    const summary = input.assetType === AssetReportAssetType.FII
+      ? `Resumo mock de documento oficial para ${input.ticker}, usado apenas em desenvolvimento para evitar consumo de token.`
+      : `Resumo mock de fonte oficial de RI para ${input.ticker}, usado apenas em desenvolvimento para evitar consumo de token.`
+
+    logReportSourceDebug('web-search-mocked', {
+      assetType: input.assetType,
+      ticker: input.ticker,
+      sourceUrl,
+    })
+
+    return {
+      assetType: input.assetType,
+      ticker: input.ticker,
+      sourceKind: AssetReportSourceKind.AUTO_FOUND,
+      sourceUrl,
+      documentFingerprint: hashFingerprint({
+        ticker: input.ticker,
+        sourceUrl,
+        summary,
+        title,
+        publisher,
+        sourceType,
+        discoveryMethod: 'OFFICIAL_IR_WEB_SEARCH_MOCK',
+      }),
+      metadata: {
+        discoveryMethod: 'OFFICIAL_IR_WEB_SEARCH_MOCK',
+        title,
+        publisher,
+        sourceType,
+        summary,
+      },
+      promptContext: [
+        'Voce e um analista buy and hold do mercado brasileiro.',
+        `Analise o ativo ${input.ticker} usando esta fonte mockada de desenvolvimento.`,
+        `Fonte: ${title} (${publisher})`,
+        `URL: ${sourceUrl}`,
+        `Tipo da fonte: ${sourceType}`,
+        '',
+        'Resumo util da fonte oficial mockada:',
+        summary,
+        '',
+        'Responda em portugues do Brasil com exatamente 5 bullets, cada um comecando com "•".',
+        'Cubra qualidade do ativo, riscos, leitura do momento e conclusao pratica.',
+      ].join('\n'),
+    }
+  }
+
   if (process.env.REPORT_AUTO_WEB_SEARCH_ENABLED !== 'true') {
     logReportSourceDebug('web-search-skipped', {
       assetType: input.assetType,
@@ -524,6 +622,11 @@ async function defaultResolveAutoSource(input: {
 }, resolveWebSearchSource?: ReportRuntime['resolveWebSearchSource']): Promise<ResolvedReportSource | null> {
   const ticker = normalizeTicker(input.ticker)
   const webSearchResolver = resolveWebSearchSource ?? defaultResolveWebSearchSource
+  const resolveLocalSource = async () => (
+    input.assetType === AssetReportAssetType.STOCK
+      ? resolveStockAutoSource(ticker)
+      : resolveFiiAutoSource(ticker)
+  )
 
   const officialSource = await webSearchResolver({
     assetType: input.assetType,
@@ -531,18 +634,22 @@ async function defaultResolveAutoSource(input: {
   })
 
   if (officialSource) {
+    const localSource = await resolveLocalSource()
+    const mergedSource = localSource
+      ? mergeResolvedReportSourceWithStructuredFallback(officialSource, localSource)
+      : officialSource
+
     logReportSourceDebug('source-selected', {
       assetType: input.assetType,
       ticker,
-      selected: 'OFFICIAL_IR_WEB_SEARCH',
+      selected: localSource ? 'OFFICIAL_IR_WEB_SEARCH_WITH_STRUCTURED_FALLBACK' : 'OFFICIAL_IR_WEB_SEARCH',
       sourceUrl: officialSource.sourceUrl ?? null,
+      supplementalSourceUrl: localSource?.sourceUrl ?? null,
     })
-    return officialSource
+    return mergedSource
   }
 
-  const localSource = input.assetType === AssetReportAssetType.STOCK
-    ? await resolveStockAutoSource(ticker)
-    : await resolveFiiAutoSource(ticker)
+  const localSource = await resolveLocalSource()
 
   if (localSource) {
     logReportSourceDebug('source-selected', {
@@ -567,7 +674,7 @@ async function defaultGenerateAnalysis(input: {
   ticker: string
   promptContext: string
 }) {
-  if (process.env.NODE_ENV === 'test') {
+  if (process.env.NODE_ENV === 'test' || isOpenAiMockEnabled()) {
     return buildDeterministicTestAnalysis(input)
   }
 

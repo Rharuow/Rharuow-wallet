@@ -1,6 +1,7 @@
 import OpenAI from 'openai'
 import { prisma } from '../../lib/prisma'
 import { redis } from '../../lib/redis'
+import { isOpenAiMockEnabled } from '../../lib/openai-mode'
 import { getStockDetail } from '../stocks/stocks.service'
 import type { StockDetail } from '../stocks/stocks.schema'
 import { getFii } from '../fiis/fiis.service'
@@ -176,12 +177,141 @@ Forneça exatamente 4 insights práticos e personalizados em português do Brasi
 Responda APENAS com uma lista de 4 bullets, começando cada um com "•". Sem introdução, sem conclusão, apenas os 4 bullets.`
 }
 
+function buildMockInsights(request: InsightsRequest): string {
+  if (request.type === 'costs') {
+    const analytics = request.analytics as CostAnalyticsInput
+    const topArea = analytics.byArea.slice().sort((left, right) => right.total - left.total)[0]
+    const topType = analytics.byType.slice().sort((left, right) => right.total - left.total)[0]
+
+    return [
+      `• Seus custos no período somaram ${formatBRL(analytics.summary.total)}; trate esta resposta como mock de desenvolvimento para validar o fluxo sem consumir token.`,
+      `• ${topArea ? `A área com maior peso foi ${topArea.areaName} (${formatBRL(topArea.total)}), então vale revisar recorrências e excessos nela primeiro.` : 'Ainda não há área dominante suficiente para inferência mais forte.'}`,
+      `• ${topType ? `O tipo de custo com maior impacto foi ${topType.typeName ?? topType.label ?? 'não categorizado'} com ${formatBRL(topType.total)}.` : 'Os tipos de custo ainda não têm volume suficiente para um destaque confiável.'}`,
+      '• Em produção, esta seção volta a usar a OpenAI; em dev, o objetivo aqui é manter a UI e os contratos exercitados com uma resposta estável.',
+    ].join('\n')
+  }
+
+  const analytics = request.analytics as IncomeAnalyticsInput
+  const topType = analytics.byType.slice().sort((left, right) => right.total - left.total)[0]
+  const net = typeof request.costTotal === 'number' ? analytics.summary.total - request.costTotal : null
+
+  return [
+    `• Suas entradas no período somaram ${formatBRL(analytics.summary.total)}; esta é uma resposta mockada para ambiente de desenvolvimento.`,
+    `• ${net === null ? 'O saldo líquido não foi calculado porque o total de custos não veio no payload.' : `O saldo líquido estimado no período foi de ${formatBRL(net)}.`}`,
+    `• ${topType ? `A principal fonte de entrada foi ${topType.label ?? topType.type ?? 'não identificada'} com ${formatBRL(topType.total)}.` : 'Ainda não há fonte de renda dominante suficiente para destaque.'}`,
+    '• Use esta saída para validar layout, cache e tratamento de estado sem custo de API externa.',
+  ].join('\n')
+}
+
+function buildMockStockAnalysis(ticker: string, stock: StockDetail): string {
+  return [
+    `• ${ticker} está em modo mock de desenvolvimento; a cotação usada como referência é ${stock.regularMarketPrice != null ? formatBRL(stock.regularMarketPrice) : 'indisponível'}.`,
+    `• Valuation: P/L ${fNum(stock.priceEarnings)} e P/VP ${fNum(stock.defaultKeyStatistics?.priceToBook)} servem aqui apenas para exercitar o fluxo visual e o contrato da API.`,
+    `• Resultados: receita ${fCompact(stock.financialData?.totalRevenue)} e EBITDA ${fCompact(stock.financialData?.ebitda)} mostram que os dados de mercado foram carregados corretamente.`,
+    `• Riscos: dívida total ${fCompact(stock.financialData?.totalDebt)} e liquidez corrente ${fNum(stock.financialData?.currentRatio)} continuam disponíveis mesmo sem chamada real à OpenAI.`,
+    '• Conclusão prática: use este retorno estável para testar telas, polling e cache; desligue o mock para obter narrativa analítica real.',
+  ].join('\n')
+}
+
+function buildMockFiiAnalysis(papel: string, fii: FiiItem): string {
+  return [
+    `• ${papel} está usando análise mock em desenvolvimento; a cotação de referência é ${fii.cotacao != null ? `R$ ${fii.cotacao.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : 'indisponível'}.`,
+    `• Rendimento: DY ${fii.dividendYield != null ? `${fii.dividendYield.toFixed(2)}%` : '—'} e FFO Yield ${fii.ffoYield != null ? `${fii.ffoYield.toFixed(2)}%` : '—'} são exibidos para validar o conteúdo do card.`,
+    `• Precificação: P/VP ${fii.pvp != null ? fii.pvp.toFixed(2) : '—'} e vacância ${fii.vacanciaMedia != null ? `${fii.vacanciaMedia.toFixed(2)}%` : '—'} continuam vindo da base local.`,
+    `• Qualidade do portfólio: segmento ${fii.segmento || 'não informado'} e liquidez ${fii.liquidez != null ? `R$ ${fii.liquidez.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '—'} ajudam a manter a tela útil durante dev.`,
+    '• Conclusão prática: esta resposta genérica economiza token e mantém o fluxo completo testável.',
+  ].join('\n')
+}
+
+function buildMockBudgetGoals(input: BudgetGoalsInput): string {
+  const periodMonths = (() => {
+    const from = new Date(input.period.dateFrom)
+    const to = new Date(input.period.dateTo)
+    const diff = (to.getFullYear() - from.getFullYear()) * 12 + (to.getMonth() - from.getMonth()) + 1
+    return Math.max(1, diff)
+  })()
+
+  const areaLines = input.byArea
+    .slice()
+    .sort((left, right) => right.total - left.total)
+    .map((area) => {
+      const monthlyAverage = area.total / periodMonths
+      const target = monthlyAverage * 0.95
+      return `• ${area.areaName}: meta ${formatBRL(target)}/mês — mock de desenvolvimento baseado em redução leve sobre a média histórica de ${formatBRL(monthlyAverage)}.`
+    })
+
+  const savingsTarget = Math.max(0, (input.incomeTotal - input.summary.total) / periodMonths)
+  areaLines.push(
+    `• Meta de Poupança: ${formatBRL(savingsTarget)}/mês (${input.incomeTotal > 0 ? (((savingsTarget / (input.incomeTotal / periodMonths)) || 0) * 100).toFixed(1) : '0.0'}% da renda) — resposta mockada para validar o fluxo sem OpenAI.`,
+  )
+
+  return areaLines.join('\n')
+}
+
+function buildMockHealthScore(input: HealthScoreInput): string {
+  const totalIncome = input.incomes.summary.total
+  const totalCosts = input.costs.summary.total
+  const savingRate = totalIncome > 0 ? ((totalIncome - totalCosts) / totalIncome) * 100 : 0
+  const score = Math.min(10, Math.max(1, Math.round(5 + (savingRate >= 20 ? 2 : savingRate > 0 ? 1 : -1))))
+
+  return [
+    `SCORE: ${score}/10`,
+    `• Taxa de poupança: mock calculado com base em ${savingRate.toFixed(1)}% no período analisado.`,
+    '• Burn rate e runway: esta resposta é genérica e serve para testar a renderização do score e dos bullets.',
+    '• Composição dos custos: use os gráficos e agregados reais da API como principal referência durante o desenvolvimento.',
+    '• Diversificação da renda: o mock preserva o formato esperado para a UI sem chamar a OpenAI.',
+    '• Recomendação prioritária: valide o fluxo funcional em dev com mock ligado e desligue-o apenas para checagens qualitativas finais.',
+  ].join('\n')
+}
+
+function normalizeFreeText(value: string) {
+  return value
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+}
+
+function extractAmountFromText(input: string) {
+  const currencyMatch = input.match(/(?:r\$\s*)?([0-9]{1,3}(?:\.[0-9]{3})*(?:,[0-9]{2})|[0-9]+(?:[\.,][0-9]{2})?)/i)
+  if (!currencyMatch) {
+    return null
+  }
+
+  const normalized = currencyMatch[1].includes(',')
+    ? currencyMatch[1].replace(/\./g, '').replace(',', '.')
+    : currencyMatch[1]
+
+  const parsed = Number(normalized)
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : null
+}
+
+function buildMockCostSuggestion(input: CostSuggestionInput): CostSuggestionResult {
+  const normalizedInput = normalizeFreeText(input.input)
+  const matchedType = input.types.find((type) => normalizedInput.includes(normalizeFreeText(type.name)))
+  const matchedArea = matchedType
+    ? input.areas.find((area) => area.id === matchedType.areaId)
+    : input.areas.find((area) => normalizedInput.includes(normalizeFreeText(area.name))) ?? input.areas[0]
+
+  if (!matchedArea) {
+    throw Object.assign(new Error('Nenhuma área disponível para sugerir em modo mock.'), { statusCode: 422 })
+  }
+
+  return {
+    amount: Math.round((extractAmountFromText(input.input) ?? 1) * 100) / 100,
+    areaId: matchedArea.id,
+    areaName: matchedArea.name,
+    costTypeId: matchedType?.id ?? null,
+    costTypeName: matchedType?.name ?? 'Despesa geral',
+    description: input.input.trim().slice(0, 120) || 'Lançamento sugerido por mock',
+  }
+}
+
 // ----------------------------------------------------------------
 // Main function
 // ----------------------------------------------------------------
 
 export async function generateInsights(userId: string, request: InsightsRequest): Promise<string> {
-  if (!process.env.OPENAI_API_KEY) {
+  if (!process.env.OPENAI_API_KEY && !isOpenAiMockEnabled()) {
     throw Object.assign(new Error('Serviço de IA não configurado.'), { statusCode: 503 })
   }
 
@@ -192,6 +322,12 @@ export async function generateInsights(userId: string, request: InsightsRequest)
 
   // 2. Rate limit
   await checkRateLimit(userId)
+
+  if (isOpenAiMockEnabled()) {
+    const result = buildMockInsights(request)
+    await redis.set(cacheKey, result, { ex: CACHE_TTL_SECONDS })
+    return result
+  }
 
   // 3. Chamada à OpenAI
   const prompt = request.type === 'costs'
@@ -284,7 +420,7 @@ Responda APENAS com uma lista de 5 bullets, começando cada um com "•". Sem in
 }
 
 export async function analyzeStock(userId: string, ticker: string): Promise<string> {
-  if (!process.env.OPENAI_API_KEY) {
+  if (!process.env.OPENAI_API_KEY && !isOpenAiMockEnabled()) {
     throw Object.assign(new Error('Serviço de IA não configurado.'), { statusCode: 503 })
   }
 
@@ -299,6 +435,12 @@ export async function analyzeStock(userId: string, ticker: string): Promise<stri
   const stock = await getStockDetail(upperTicker)
   if (!stock) {
     throw Object.assign(new Error(`Ativo "${upperTicker}" não encontrado.`), { statusCode: 404 })
+  }
+
+  if (isOpenAiMockEnabled()) {
+    const result = buildMockStockAnalysis(upperTicker, stock)
+    await redis.set(cacheKey, result, { ex: CACHE_TTL_SECONDS })
+    return result
   }
 
   const prompt = buildStockAnalysisPrompt(upperTicker, stock)
@@ -363,7 +505,7 @@ Responda APENAS com uma lista de 5 bullets, começando cada um com "•". Sem in
 }
 
 export async function analyzeFii(userId: string, papel: string): Promise<string> {
-  if (!process.env.OPENAI_API_KEY) {
+  if (!process.env.OPENAI_API_KEY && !isOpenAiMockEnabled()) {
     throw Object.assign(new Error('Serviço de IA não configurado.'), { statusCode: 503 })
   }
 
@@ -378,6 +520,12 @@ export async function analyzeFii(userId: string, papel: string): Promise<string>
   const fii = await getFii(upperPapel)
   if (!fii) {
     throw Object.assign(new Error(`FII "${upperPapel}" não encontrado.`), { statusCode: 404 })
+  }
+
+  if (isOpenAiMockEnabled()) {
+    const result = buildMockFiiAnalysis(upperPapel, fii)
+    await redis.set(cacheKey, result, { ex: CACHE_TTL_SECONDS })
+    return result
   }
 
   const prompt = buildFiiAnalysisPrompt(upperPapel, fii)
@@ -472,7 +620,7 @@ Regras:
 }
 
 export async function suggestBudgetGoals(userId: string, input: BudgetGoalsInput): Promise<string> {
-  if (!process.env.OPENAI_API_KEY) {
+  if (!process.env.OPENAI_API_KEY && !isOpenAiMockEnabled()) {
     throw Object.assign(new Error('Serviço de IA não configurado.'), { statusCode: 503 })
   }
 
@@ -481,6 +629,12 @@ export async function suggestBudgetGoals(userId: string, input: BudgetGoalsInput
   if (cached) return cached
 
   await checkRateLimit(userId)
+
+  if (isOpenAiMockEnabled()) {
+    const result = buildMockBudgetGoals(input)
+    await redis.set(cacheKey, result, { ex: CACHE_TTL_SECONDS })
+    return result
+  }
 
   const prompt = buildBudgetGoalsPrompt(input)
 
@@ -603,7 +757,7 @@ Regras:
 }
 
 export async function scoreFinancialHealth(userId: string, input: HealthScoreInput): Promise<string> {
-  if (!process.env.OPENAI_API_KEY) {
+  if (!process.env.OPENAI_API_KEY && !isOpenAiMockEnabled()) {
     throw Object.assign(new Error('Serviço de IA não configurado.'), { statusCode: 503 })
   }
 
@@ -612,6 +766,12 @@ export async function scoreFinancialHealth(userId: string, input: HealthScoreInp
   if (cached) return cached
 
   await checkRateLimit(userId)
+
+  if (isOpenAiMockEnabled()) {
+    const result = buildMockHealthScore(input)
+    await redis.set(cacheKey, result, { ex: CACHE_TTL_SECONDS })
+    return result
+  }
 
   const prompt = buildHealthScorePrompt(input)
 
@@ -682,11 +842,15 @@ export async function suggestCostAreaAndDescription(
   userId: string,
   input: CostSuggestionInput,
 ): Promise<CostSuggestionResult> {
-  if (!process.env.OPENAI_API_KEY) {
+  if (!process.env.OPENAI_API_KEY && !isOpenAiMockEnabled()) {
     throw Object.assign(new Error('Serviço de IA não configurado.'), { statusCode: 503 })
   }
 
   await checkRateLimit(userId)
+
+  if (isOpenAiMockEnabled()) {
+    return buildMockCostSuggestion(input)
+  }
 
   const prompt = buildCostSuggestionPrompt(input)
 
