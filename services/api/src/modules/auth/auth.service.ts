@@ -3,7 +3,7 @@ import crypto from 'node:crypto'
 import { prisma } from '../../lib/prisma'
 import { sendVerificationEmail, sendPasswordResetEmail } from '../../lib/mailer'
 import { publishUserRegistered } from '../../lib/kafka'
-import type { LoginInput, RegisterInput, ForgotPasswordInput, ResetPasswordInput } from './auth.schema'
+import type { LoginInput, RegisterInput, ForgotPasswordInput, ResetPasswordInput, ResendVerificationInput } from './auth.schema'
 
 export async function registerUser(input: RegisterInput) {
   const existing = await prisma.user.findUnique({
@@ -40,8 +40,6 @@ export async function registerUser(input: RegisterInput) {
   const token = crypto.randomBytes(32).toString('hex')
   const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000)
 
-  // Cria usuário e token dentro de uma transação.
-  // O envio do e-mail ocorre antes do commit: se falhar, tudo é revertido.
   const user = await prisma.$transaction(async (tx) => {
     const created = await tx.user.create({
       data: {
@@ -68,12 +66,20 @@ export async function registerUser(input: RegisterInput) {
       data: { userId: created.id, token, expiresAt },
     })
 
-    // Envia o e-mail ainda dentro da transação.
-    // Qualquer falha aqui causa rollback automático.
-    await sendVerificationEmail(created.email, token)
-
     return created
   })
+
+  let verificationEmailSent = true
+
+  try {
+    await sendVerificationEmail(user.email, token)
+  } catch (err) {
+    verificationEmailSent = false
+    console.error('[Auth] Falha ao enviar e-mail de verificação no cadastro:', {
+      email: user.email,
+      error: err,
+    })
+  }
 
   try {
     await publishUserRegistered({
@@ -87,7 +93,10 @@ export async function registerUser(input: RegisterInput) {
     console.error('[Kafka] Falha ao publicar evento user.registered:', err)
   }
 
-  return user
+  return {
+    user,
+    verificationEmailSent,
+  }
 }
 
 export async function verifyEmail(token: string) {
@@ -174,6 +183,39 @@ export async function forgotPassword(input: ForgotPasswordInput) {
   })
 
   await sendPasswordResetEmail(user.email, token)
+}
+
+export async function resendVerificationEmail(input: ResendVerificationInput) {
+  const user = await prisma.user.findUnique({
+    where: { email: input.email },
+    select: { id: true, email: true, isActive: true },
+  })
+
+  if (!user || user.isActive) {
+    return
+  }
+
+  const token = crypto.randomBytes(32).toString('hex')
+  const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000)
+
+  await prisma.$transaction([
+    prisma.emailVerifyToken.updateMany({
+      where: { userId: user.id, usedAt: null },
+      data: { usedAt: new Date() },
+    }),
+    prisma.emailVerifyToken.create({
+      data: { userId: user.id, token, expiresAt },
+    }),
+  ])
+
+  try {
+    await sendVerificationEmail(user.email, token)
+  } catch (err) {
+    console.error('[Auth] Falha ao reenviar e-mail de verificação:', {
+      email: user.email,
+      error: err,
+    })
+  }
 }
 
 export async function resetPassword(input: ResetPasswordInput) {

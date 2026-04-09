@@ -12,6 +12,8 @@ const navItems = [
   { label: "Home", href: "/dashboard" },
   { label: "Ações", href: "/dashboard/acoes" },
   { label: "FIIs", href: "/dashboard/fiis" },
+  { label: "Créditos", href: "/dashboard/creditos" },
+  { label: "Relatórios", href: "/dashboard/relatorios" },
   { label: "Saúde Financeira 💚", href: "/dashboard/saude-financeira" },
   { label: "Premium ✨", href: "/dashboard/premium" },
   { label: "Notificações", href: "/dashboard/notificacoes" },
@@ -241,13 +243,8 @@ export function DashboardShell({
     setOpen(false);
   }
 
-  async function backToOwnWallet() {
-    await fetch("/api/wallet/active", { method: "DELETE" });
-    router.refresh();
-  }
-
   return (
-    <div className="min-h-screen bg-[var(--background)]">
+    <div className="dashboard-theme min-h-screen bg-[var(--background)]">
       <aside className="fixed inset-y-0 left-0 z-30 flex w-64 flex-col border-r border-slate-200 bg-[var(--background)] max-lg:![display:none]">
         <div className="flex items-center justify-center border-b border-slate-200 px-4 py-4">
           <Image
@@ -260,8 +257,10 @@ export function DashboardShell({
             style={{ width: 140, height: 50 }}
           />
         </div>
-        <div className="flex flex-1 flex-col gap-6 overflow-y-auto px-3 py-4">
+        <div className="border-b border-slate-200 px-3 py-4">
           <WalletSwitcher walletContext={walletContext} />
+        </div>
+        <div className="flex-1 overflow-y-auto px-3 py-4">
           <NavContent pathname={pathname} walletContext={walletContext} />
         </div>
         <div className="border-t border-slate-200 px-3 py-4">
@@ -290,23 +289,32 @@ export function DashboardShell({
 
         {hasMounted ? (
           <AsideSheet open={open} onClose={closeSheet} side="left" size="sm" className="z-100">
-            <div className="flex flex-col gap-6 p-4">
-              <Image
-                src="/logo.png"
-                alt="RharouWallet"
-                loading="eager"
-                width={140}
-                height={50}
-                className="object-contain"
-                style={{ width: 140, height: 50 }}
-              />
-              <WalletSwitcher walletContext={walletContext} onComplete={closeSheet} />
-              <NavContent
-                pathname={pathname}
-                walletContext={walletContext}
-                onLinkClick={closeSheet}
-              />
-              <div className="mt-auto pt-4">
+            <div className="flex h-full min-h-0 flex-col overflow-hidden">
+              <div className="border-b border-slate-200 px-4 py-4">
+                <Image
+                  src="/logo.png"
+                  alt="RharouWallet"
+                  loading="eager"
+                  width={140}
+                  height={50}
+                  className="object-contain"
+                  style={{ width: 140, height: 50 }}
+                />
+              </div>
+
+              <div className="border-b border-slate-200 px-4 py-4">
+                <WalletSwitcher walletContext={walletContext} onComplete={closeSheet} />
+              </div>
+
+              <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4">
+                <NavContent
+                  pathname={pathname}
+                  walletContext={walletContext}
+                  onLinkClick={closeSheet}
+                />
+              </div>
+
+              <div className="border-t border-slate-200 px-4 py-4">
                 <Button
                   variant="outline"
                   className="w-full"

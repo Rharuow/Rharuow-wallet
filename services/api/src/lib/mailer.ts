@@ -3,6 +3,12 @@ import { Resend } from 'resend'
 
 const APP_URL = process.env.APP_URL ?? 'http://localhost:3000'
 
+function maskEmail(email: string) {
+  const [localPart, domain = ''] = email.split('@')
+  const visibleLocalPart = localPart.length <= 2 ? localPart : `${localPart.slice(0, 2)}***`
+  return `${visibleLocalPart}@${domain}`
+}
+
 function shouldSkipEmailDelivery() {
   return process.env.MAILER_DISABLE_SEND === 'true'
 }
@@ -32,8 +38,15 @@ function buildEmailHtml(link: string) {
 async function sendViaResend(to: string, subject: string, html: string) {
   const resend = new Resend(process.env.RESEND_API_KEY)
   const from = process.env.RESEND_FROM ?? 'RharouWallet <onboarding@resend.dev>'
-  const { error } = await resend.emails.send({ from, to, subject, html })
+  const { data, error } = await resend.emails.send({ from, to, subject, html })
   if (error) throw new Error(`Resend error: ${error.message}`)
+
+  console.info('[mailer] Email accepted by Resend', {
+    provider: 'resend',
+    to: maskEmail(to),
+    subject,
+    emailId: data?.id ?? null,
+  })
 }
 
 async function sendViaSmtp(to: string, subject: string, html: string) {
@@ -47,7 +60,27 @@ async function sendViaSmtp(to: string, subject: string, html: string) {
         : undefined,
   })
   const from = process.env.SMTP_FROM ?? 'RharouWallet <no-reply@rharuowallet.com>'
-  await transporter.sendMail({ from, to, subject, html })
+  const info = await transporter.sendMail({
+    from,
+    to,
+    subject,
+    html,
+    text: `Acesse o link para continuar: ${html.match(/href="([^"]+)"/)?.[1] ?? APP_URL}`,
+  })
+
+  const rejectedRecipients = [...(info.rejected ?? []), ...(info.pending ?? [])]
+  if (rejectedRecipients.length > 0) {
+    throw new Error(`SMTP rejected recipients: ${rejectedRecipients.join(', ')}`)
+  }
+
+  console.info('[mailer] Email accepted by SMTP', {
+    provider: 'smtp',
+    to: maskEmail(to),
+    subject,
+    messageId: info.messageId,
+    accepted: info.accepted,
+    response: info.response,
+  })
 }
 
 export async function sendVerificationEmail(email: string, token: string) {

@@ -78,7 +78,14 @@ export function CostMobileCard({ cost, localAreas, localTypes, edit, lists: _lis
           containerClassName="mb-0"
         />
 
-        {edit.editRecurrenceId && (
+        <Switch
+          checked={edit.editIsRecurring}
+          onChange={edit.setEditIsRecurring}
+          label="Custo recorrente"
+          labelPosition="right"
+        />
+
+        {edit.editIsRecurring && (
           <>
             <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">Recorrência</p>
             <Select

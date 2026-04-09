@@ -28,6 +28,7 @@ export function useCostEdit({ recurrences, localTypes }: UseCostEditOptions) {
   const [editInterval, setEditInterval] = useState("1");
   const [editMaxOccurrences, setEditMaxOccurrences] = useState("");
   const [editIsActive, setEditIsActive] = useState(true);
+  const [editIsRecurring, setEditIsRecurring] = useState(false);
 
   function startEdit(cost: Cost) {
     setEditError(null);
@@ -41,12 +42,18 @@ export function useCostEdit({ recurrences, localTypes }: UseCostEditOptions) {
     if (cost.recurrenceId) {
       const rec = recurrences.find((r) => r.id === cost.recurrenceId);
       setEditRecurrenceId(cost.recurrenceId);
+      setEditIsRecurring(true);
       setEditUnit(rec?.unit ?? "MONTH");
       setEditInterval(String(rec?.interval ?? 1));
       setEditMaxOccurrences(rec?.maxOccurrences != null ? String(rec.maxOccurrences) : "");
       setEditIsActive(rec?.isActive ?? true);
     } else {
       setEditRecurrenceId(null);
+      setEditIsRecurring(false);
+      setEditUnit("MONTH");
+      setEditInterval("1");
+      setEditMaxOccurrences("");
+      setEditIsActive(true);
     }
   }
 
@@ -59,6 +66,11 @@ export function useCostEdit({ recurrences, localTypes }: UseCostEditOptions) {
     setEditDate("");
     setEditError(null);
     setEditRecurrenceId(null);
+    setEditIsRecurring(false);
+    setEditUnit("MONTH");
+    setEditInterval("1");
+    setEditMaxOccurrences("");
+    setEditIsActive(true);
   }
 
   async function submitEdit() {
@@ -68,7 +80,7 @@ export function useCostEdit({ recurrences, localTypes }: UseCostEditOptions) {
       setEditError("Informe um valor válido.");
       return;
     }
-    if (editRecurrenceId) {
+    if (editIsRecurring) {
       const interval = parseInt(editInterval, 10);
       if (isNaN(interval) || interval < 1) {
         setEditError("Informe um intervalo válido.");
@@ -86,6 +98,7 @@ export function useCostEdit({ recurrences, localTypes }: UseCostEditOptions) {
           amount,
           description: editDescription.trim() || undefined,
           date: new Date(editDate).toISOString(),
+          recurrenceId: editIsRecurring ? undefined : null,
         }),
       });
       if (!costRes.ok) {
@@ -93,7 +106,7 @@ export function useCostEdit({ recurrences, localTypes }: UseCostEditOptions) {
         setEditError(data.error ?? "Erro ao atualizar custo.");
         return;
       }
-      if (editRecurrenceId) {
+      if (editIsRecurring && editRecurrenceId) {
         const recRes = await fetch(`/api/costs/recurrences/${editRecurrenceId}`, {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
@@ -109,6 +122,37 @@ export function useCostEdit({ recurrences, localTypes }: UseCostEditOptions) {
         if (!recRes.ok) {
           const data = await recRes.json().catch(() => ({}));
           setEditError(data.error ?? "Erro ao atualizar recorrência.");
+          return;
+        }
+      } else if (editIsRecurring && !editRecurrenceId) {
+        const recRes = await fetch(`/api/costs/recurrences`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            existingCostId: editingId,
+            costTypeId: editCostTypeId,
+            amount,
+            description: editDescription.trim() || undefined,
+            unit: editUnit,
+            interval: parseInt(editInterval, 10),
+            startDate: new Date(editDate).toISOString(),
+            ...(editMaxOccurrences ? { maxOccurrences: parseInt(editMaxOccurrences, 10) } : {}),
+          }),
+        });
+
+        if (!recRes.ok) {
+          const data = await recRes.json().catch(() => ({}));
+          setEditError(data.error ?? "Erro ao criar recorrência.");
+          return;
+        }
+      } else if (!editIsRecurring && editRecurrenceId) {
+        const recRes = await fetch(`/api/costs/recurrences/${editRecurrenceId}`, {
+          method: "DELETE",
+        });
+
+        if (!recRes.ok) {
+          const data = await recRes.json().catch(() => ({}));
+          setEditError(data.error ?? "Erro ao remover recorrência.");
           return;
         }
       }
@@ -135,6 +179,8 @@ export function useCostEdit({ recurrences, localTypes }: UseCostEditOptions) {
     editError,
     setEditError,
     editRecurrenceId,
+    editIsRecurring,
+    setEditIsRecurring,
     editUnit,
     setEditUnit,
     editInterval,

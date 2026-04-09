@@ -6,7 +6,18 @@ export const metadata = {
   description: "Cadastre-se para começar a gerenciar seus investimentos",
 };
 
-export default function RegisterPage() {
+export default async function RegisterPage({
+  searchParams,
+}: {
+  searchParams: Promise<{
+    email?: string;
+    pendingVerification?: string;
+    source?: string;
+  }>;
+}) {
+  const { email, pendingVerification, source } = await searchParams;
+  const shouldShowPendingVerification = pendingVerification === "1" && Boolean(email);
+
   return (
     <main className="flex min-h-screen items-center justify-center bg-[var(--background)] px-4">
       <div className="w-full max-w-sm">
@@ -23,7 +34,11 @@ export default function RegisterPage() {
           />
         </div>
 
-        <RegisterForm />
+        <RegisterForm
+          initialEmail={shouldShowPendingVerification ? email ?? "" : ""}
+          initialSubmitted={shouldShowPendingVerification}
+          initialVerificationContext={source === "login" ? "inactive-login" : "registration"}
+        />
 
         <p className="mt-6 text-center text-xs text-slate-400">
           Já tem uma conta?{" "}

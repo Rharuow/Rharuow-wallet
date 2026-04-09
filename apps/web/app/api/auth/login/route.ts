@@ -33,8 +33,13 @@ export async function POST(req: NextRequest) {
     return response;
   } catch (err: unknown) {
     const status = (err as { status?: number }).status ?? 500;
-    const message =
+    const rawMessage =
       (err as { message?: string }).message ?? "Erro ao realizar login";
+    const message =
+      status === 403
+        ? "Conta não confirmada. Verifique seu e-mail."
+        : rawMessage;
+
     return NextResponse.json({ error: message }, { status });
   }
 }

@@ -11,3 +11,5 @@ coverage
 pnpm-lock.yaml
 npm-debug.log
 yarn.lock
+docs/local/
+services/api/.data/

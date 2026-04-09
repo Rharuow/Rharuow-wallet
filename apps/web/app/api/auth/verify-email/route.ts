@@ -20,3 +20,20 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: message }, { status });
   }
 }
+
+export async function POST(req: NextRequest) {
+  const body = await req.json();
+
+  try {
+    const data = await apiFetch<{ message: string }>("/v1/auth/resend-verification", {
+      method: "POST",
+      body: JSON.stringify(body),
+    });
+    return NextResponse.json(data);
+  } catch (err: unknown) {
+    const status = (err as { status?: number }).status ?? 500;
+    const message =
+      (err as { message?: string }).message ?? "Erro ao reenviar e-mail";
+    return NextResponse.json({ error: message }, { status });
+  }
+}

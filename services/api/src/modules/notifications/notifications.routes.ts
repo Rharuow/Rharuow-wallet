@@ -1,6 +1,10 @@
+import { NotificationType } from '@prisma/client'
+import fastifyWebsocket = require('@fastify/websocket')
 import { FastifyInstance, FastifyReply } from 'fastify'
+import { z } from 'zod'
 import { authenticate } from '../../plugins/authenticate'
 import { NotificationIdParamsSchema, NotificationsQuerySchema } from './notifications.schema'
+import { registerNotificationsSocket } from './notifications-realtime'
 import {
   deleteNotification,
   getUnreadNotificationsCount,
@@ -14,6 +18,10 @@ function handleServiceError(err: unknown, reply: FastifyReply) {
   return reply.status(error.statusCode ?? 500).send({ error: error.message })
 }
 
+const NotificationsSocketQuerySchema = z.object({
+  token: z.string().min(1),
+})
+
 export async function notificationsRoutes(fastify: FastifyInstance) {
   fastify.get('/', {
     preHandler: authenticate,
@@ -26,6 +34,8 @@ export async function notificationsRoutes(fastify: FastifyInstance) {
         properties: {
           page: { type: 'integer', minimum: 1 },
           limit: { type: 'integer', minimum: 1, maximum: 50 },
+          type: { type: 'string', enum: Object.values(NotificationType) },
+          status: { type: 'string', enum: ['all', 'read', 'unread'] },
           unreadOnly: { type: 'boolean' },
         },
       },
@@ -48,6 +58,46 @@ export async function notificationsRoutes(fastify: FastifyInstance) {
     return reply.send({ unreadCount })
   })
 
+  fastify.get('/ws-token', {
+    preHandler: authenticate,
+    schema: {
+      tags: ['Notifications'],
+      summary: 'Emitir token de curta duração para websocket de notificações',
+      security: [{ bearerAuth: [] }],
+    },
+  }, async (request, reply) => {
+    const token = await reply.jwtSign(
+      {
+        sub: request.user.sub,
+        email: request.user.email,
+        role: request.user.role,
+        purpose: 'notifications-ws',
+      },
+      { expiresIn: '15m' },
+    )
+
+    return reply.send({ token, expiresInSeconds: 900 })
+  })
+
+  fastify.get('/ws', { websocket: true }, async (connection: fastifyWebsocket.SocketStream, request) => {
+    try {
+      const query = NotificationsSocketQuerySchema.parse(request.query)
+      const payload = await fastify.jwt.verify<{
+        sub: string
+        purpose?: string
+      }>(query.token)
+
+      if (payload.purpose !== 'notifications-ws' || !payload.sub) {
+        connection.socket.close(1008, 'Unauthorized')
+        return
+      }
+
+      registerNotificationsSocket(payload.sub, connection.socket)
+    } catch {
+      connection.socket.close(1008, 'Unauthorized')
+    }
+  })
+
   fastify.patch<{ Params: { id: string } }>('/:id/read', {
     preHandler: authenticate,
     schema: {
@@ -66,6 +116,7 @@ export async function notificationsRoutes(fastify: FastifyInstance) {
       const notification = await markNotificationAsRead(request.user.sub, params.id)
       return reply.send({ notification })
     } catch (err) {
+      request.log.error({ err, requestId: request.id, userId: request.user.sub, notificationId: params.id }, 'notifications.mark_read_failed')
       return handleServiceError(err, reply)
     }
   })
@@ -100,6 +151,7 @@ export async function notificationsRoutes(fastify: FastifyInstance) {
       await deleteNotification(request.user.sub, params.id)
       return reply.status(204).send()
     } catch (err) {
+      request.log.error({ err, requestId: request.id, userId: request.user.sub, notificationId: params.id }, 'notifications.delete_failed')
       return handleServiceError(err, reply)
     }
   })

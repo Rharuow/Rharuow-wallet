@@ -1,5 +1,6 @@
 import { NotificationType, Prisma } from '@prisma/client'
 import { prisma } from '../../lib/prisma'
+import { pushUnreadCountToUser } from './notifications-realtime'
 import type { NotificationsQuery } from './notifications.schema'
 
 function serviceError(message: string, statusCode: number) {
@@ -15,7 +16,7 @@ export async function createNotification(input: {
   message: string
   data?: NotificationPayload
 }) {
-  return prisma.notification.create({
+  const notification = await prisma.notification.create({
     data: {
       userId: input.userId,
       type: input.type,
@@ -24,6 +25,9 @@ export async function createNotification(input: {
       data: input.data,
     },
   })
+
+  void pushUnreadCountToUser(input.userId)
+  return notification
 }
 
 export async function createNotifications(
@@ -41,7 +45,7 @@ export async function createNotifications(
     return []
   }
 
-  return prisma.$transaction(
+  const createdNotifications = await prisma.$transaction(
     validNotifications.map((notification) =>
       prisma.notification.create({
         data: {
@@ -54,14 +58,26 @@ export async function createNotifications(
       }),
     ),
   )
+
+  const userIds = [...new Set(createdNotifications.map((notification) => notification.userId))]
+  for (const userId of userIds) {
+    void pushUnreadCountToUser(userId)
+  }
+
+  return createdNotifications
 }
 
 export async function listNotifications(userId: string, query: NotificationsQuery) {
   const page = query.page
   const limit = query.limit
-  const where = {
+  const where: Prisma.NotificationWhereInput = {
     userId,
-    ...(query.unreadOnly ? { readAt: null } : {}),
+    ...(query.type ? { type: query.type } : {}),
+    ...(query.status === 'unread'
+      ? { readAt: null }
+      : query.status === 'read'
+        ? { readAt: { not: null } }
+        : {}),
   }
 
   const [notifications, total, unreadCount] = await Promise.all([
@@ -101,10 +117,13 @@ export async function markNotificationAsRead(userId: string, notificationId: str
     return notification
   }
 
-  return prisma.notification.update({
+  const updatedNotification = await prisma.notification.update({
     where: { id: notification.id },
     data: { readAt: new Date() },
   })
+
+  void pushUnreadCountToUser(userId)
+  return updatedNotification
 }
 
 export async function markAllNotificationsAsRead(userId: string) {
@@ -113,6 +132,7 @@ export async function markAllNotificationsAsRead(userId: string) {
     data: { readAt: new Date() },
   })
 
+  void pushUnreadCountToUser(userId)
   return { updatedCount: result.count }
 }
 
@@ -127,5 +147,6 @@ export async function deleteNotification(userId: string, notificationId: string)
   }
 
   await prisma.notification.delete({ where: { id: notification.id } })
+  void pushUnreadCountToUser(userId)
   return { deleted: true }
 }

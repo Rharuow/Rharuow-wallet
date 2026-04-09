@@ -379,6 +379,194 @@ User
 
 ---
 
+## TODO — Créditos + Análise On-Demand de Relatórios (IA)
+
+### Objetivo de produto
+
+Criar uma camada de monetização complementar ao plano recorrente, permitindo que usuários `FREE` e `PREMIUM` comprem créditos na conta do RharouWallet e usem esse saldo em funcionalidades cobradas por consumo.
+
+O primeiro caso de uso será:
+
+- **Busca e análise de relatório de Ação/FII com IA**.
+- A análise deve ser baseada no relatório do ativo, não apenas em dados resumidos de mercado.
+- O acesso à análise deve durar **30 dias** para o usuário que a desbloqueou.
+- Se a análise para o mesmo ativo já existir e ainda estiver válida, ela deve ser **reaproveitada** para reduzir custo operacional.
+
+### Regras de negócio iniciais (MVP)
+
+#### 1. Carteira de créditos
+
+- Usuários `FREE` e `PREMIUM` podem adicionar crédito à conta.
+- A recarga deve ser paga via Stripe.
+- Valor de recarga: permitir valor livre **a partir de R$ 3,00**, com sugestão de presets no frontend para reduzir fricção (`R$ 5`, `R$ 10`, `R$ 20`, `R$ 50`).
+- O crédito fica disponível como saldo interno e será consumido apenas em funcionalidades on-demand.
+
+#### 2. Primeira feature on-demand
+
+- Usuário informa um ticker de **ação** ou **FII**.
+- O sistema tenta localizar automaticamente um relatório/documento-base para análise.
+- Se encontrar o documento:
+  - gera a análise com IA;
+  - cobra do saldo do usuário;
+  - concede acesso à análise por 30 dias.
+- Se **não** encontrar o documento:
+  - **não cobra** nada do usuário;
+  - informa que o relatório não foi localizado automaticamente;
+  - oferece fluxo de **upload manual** do relatório para análise posterior.
+
+#### 3. Preço por análise
+
+- Usuário `FREE`: **R$ 2,50** por análise.
+- Usuário `PREMIUM`: **R$ 1,50** por análise.
+- A cobrança acontece por desbloqueio de acesso à análise, não por número de visualizações dentro da janela de 30 dias.
+
+#### 4. Reaproveitamento
+
+- A análise deve ser reutilizada quando outro usuário pedir o mesmo ativo e a versão atual ainda estiver válida.
+- O reaproveitamento deve considerar pelo menos:
+  - ticker;
+  - tipo do ativo (`STOCK` ou `FII`);
+  - versão/fingerprint do documento usado;
+  - janela de validade da análise.
+- Mesmo quando houver reaproveitamento, o usuário continua pagando o preço do produto para obter acesso, mas a aplicação evita novo custo de OpenAI.
+
+### Estratégia recomendada de busca do relatório
+
+Para o MVP, a abordagem mais segura é em duas etapas:
+
+1. **Busca automática primeiro**
+   - Tentar localizar o relatório via busca web controlada ou scraping de fontes-alvo confiáveis.
+   - O sistema só segue para geração de análise se localizar um documento utilizável.
+
+2. **Upload manual como fallback**
+   - Se a busca automática falhar, mostrar estado explícito de “relatório não encontrado”.
+   - Permitir upload manual do PDF/documento para análise.
+
+#### Recomendação técnica de busca
+
+No MVP, evitar “busca web totalmente aberta” como única estratégia. O melhor custo-benefício é:
+
+- tentar busca por consultas direcionadas por ticker + emissor + tipo de documento;
+- priorizar fontes estáveis e previsíveis;
+- extrair e salvar metadados mínimos do documento encontrado;
+- só cobrar quando existir documento válido e a análise for concluída com sucesso.
+
+Isso reduz falsos positivos, evita cobrança injusta e melhora a chance de cache/reaproveitamento.
+
+### Estratégia de monetização e margem
+
+#### Por que esse pricing é viável
+
+- O custo de IA por análise tende a ser muito menor que o preço final cobrado, especialmente com modelo econômico e reaproveitamento.
+- A margem melhora muito quando a mesma análise é servida para múltiplos usuários.
+- O risco operacional principal não é o token da IA isoladamente, mas:
+  - buscas malsucedidas;
+  - retries;
+  - parsing de documento;
+  - custo Stripe sobre recargas pequenas.
+
+#### Recomendação financeira do MVP
+
+- Tratar recarga como **saldo pré-pago**, não como receita reconhecida no ato.
+- Registrar todos os débitos e créditos em **ledger**.
+- Cobrar apenas quando a análise estiver pronta ou quando o acesso reaproveitado for efetivamente concedido.
+- Não debitar nada em caso de relatório não encontrado ou falha operacional da pipeline.
+
+### Arquitetura proposta (MVP pé no chão)
+
+#### 1. Créditos
+
+Adicionar uma carteira interna simples de saldo com trilha de auditoria:
+
+- `UserCreditBalance`
+  - saldo atual do usuário;
+  - atualização transacional.
+- `CreditLedgerEntry`
+  - entradas de crédito (recarga);
+  - débitos de consumo (análise);
+  - estornos/reversões.
+- `CreditTopupOrder`
+  - vínculo com sessão/checkout da Stripe;
+  - status (`PENDING`, `PAID`, `FAILED`, `CANCELED`).
+
+#### 2. Documento-fonte e análise reaproveitável
+
+- `AssetReportSource`
+  - identifica o documento-base usado na análise;
+  - guarda URL original ou upload interno;
+  - guarda fingerprint/hash para reaproveitamento.
+- `AssetReportAnalysis`
+  - resultado da análise gerada pela IA;
+  - relação com ticker, tipo, source e data de geração;
+  - pode ser reutilizada por vários usuários.
+- `UserAssetReportAccess`
+  - registra que um usuário pagou e possui acesso por 30 dias àquela análise.
+
+#### 3. Regra de reaproveitamento
+
+Fluxo recomendado:
+
+1. Usuário solicita análise para um ticker.
+2. Sistema procura análise reaproveitável válida para aquele ativo e documento atual.
+3. Se existir:
+   - debita preço do usuário (`FREE`/`PREMIUM`);
+   - cria `UserAssetReportAccess` por 30 dias;
+   - não chama OpenAI.
+4. Se não existir:
+   - tenta localizar documento;
+   - gera análise;
+   - salva a análise reaproveitável;
+   - debita o usuário;
+   - cria `UserAssetReportAccess`.
+5. Se documento não for encontrado ou o pipeline falhar antes do sucesso:
+   - não debita;
+   - retorna estado de erro controlado/fallback de upload.
+
+### Fluxo funcional do MVP
+
+```text
+Usuário escolhe ticker
+        │
+        ├──► Existe acesso ativo do usuário? ──► sim: abrir análise
+        │
+        └──► Não
+               │
+               ├──► Existe análise reaproveitável válida? ──► sim: debitar saldo + criar acesso
+               │
+               └──► Não
+                      │
+                      ├──► Buscar relatório automaticamente
+                      │        │
+                      │        ├──► encontrou: gerar análise IA -> salvar -> debitar -> criar acesso
+                      │        │
+                      │        └──► não encontrou: não cobrar + oferecer upload manual
+                      │
+                      └──► Falha operacional: não cobrar + registrar erro
+```
+
+### Escopo explícito do MVP
+
+Entram no MVP:
+
+- saldo pré-pago via Stripe;
+- consulta por ticker de ação/FII;
+- busca automática do relatório;
+- análise com IA baseada no relatório;
+- cobrança diferenciada por plano;
+- acesso por 30 dias;
+- reaproveitamento da análise;
+- fallback de upload manual quando busca falhar.
+
+Ficam fora do MVP inicial:
+
+- múltiplos tipos de documento por ativo com escolha manual avançada;
+- disputa/reembolso self-service no frontend;
+- expiração automática de créditos promocionais;
+- precificação dinâmica por tamanho do relatório;
+- painel administrativo completo de auditoria financeira.
+
+---
+
 ## TODO — Compartilhamento de Carteira
 
 - [ ] **Compartilhamento de Carteira** — O dono da carteira pode convidar outro usuário (por e-mail ou pela própria aplicação) para acessar sua carteira. O convidado pode aceitar ou recusar via e-mail (link) ou diretamente pelo painel de notificações in-app. O nível de permissão depende do plano do convidado:
@@ -518,11 +706,12 @@ Localização sugerida: `services/api/src/modules/notifications/`
 |---|---|---|
 | `GET` | `/v1/notifications` | Lista notificações do usuário autenticado (paginado, mais recentes primeiro) |
 | `GET` | `/v1/notifications/unread-count` | Retorna `{ count: number }` — usado para o badge do sino |
+| `GET` | `/v1/notifications/ws-token` | Emite token de curta duração para o canal WebSocket autenticado |
 | `PATCH` | `/v1/notifications/:id/read` | Marca uma notificação como lida |
-| `PATCH` | `/v1/notifications/read-all` | Marca todas como lidas |
+| `POST` | `/v1/notifications/read-all` | Marca todas como lidas |
 | `DELETE` | `/v1/notifications/:id` | Remove uma notificação |
 
-> **Polling vs. SSE:** para o MVP, o frontend faz polling no endpoint `unread-count` a cada 30 segundos. SSE/WebSocket pode ser adicionado futuramente sem quebrar a interface.
+> **Tempo real:** o badge do sino recebe atualização por WebSocket autenticado. O endpoint `unread-count` continua disponível como fallback e para usos pontuais do frontend.
 
 #### Novo módulo: `wallet-sharing`
 
@@ -679,24 +868,24 @@ User (qualquer)
 
 - [x] Lote 1 concluído em backend: banco, módulo `wallet-sharing`, autorização compartilhada, sync de permissão no upgrade e testes de integração.
 - [x] Lote 2 concluído: frontend MVP entregue e fluxo crítico validado com E2E dedicado de convite, troca de contexto e bloqueio pós-revogação.
-- [ ] Lote 3 pendente: notificações in-app e hardening final.
+- [x] Lote 3 concluído: notificações in-app e hardening final validados com integração e E2E.
 
 #### Backend / Banco de dados
 - [x] Criar migration com models `WalletInvite`, `WalletAccess` e enums `InviteStatus`, `WalletPermission`.
-- [ ] Criar migration de `Notification` e enum `NotificationType`.
-- [ ] Criar módulo `notifications` com endpoints de listagem, contagem, leitura e remoção.
+- [x] Criar migration de `Notification` e enum `NotificationType`.
+- [x] Criar módulo `notifications` com endpoints de listagem, contagem, leitura e remoção.
 - [x] Criar módulo `wallet-sharing` com endpoints do MVP do Lote 1.
 - [x] Implementar envio de e-mail de convite via `mailer` (template novo).
-- [ ] Implementar criação de `Notification` in-app em todos os eventos do ciclo de convite (envio, aceite, recusa, revogação).
+- [x] Implementar criação de `Notification` in-app em todos os eventos do ciclo de convite (envio, aceite, recusa, revogação).
 - [x] Implementar middleware `checkWalletAccess` e aplicar nos módulos `costs` e `incomes`.
 - [x] Adaptar módulos `costs` e `incomes` para aceitar `ownerId` via contexto de acesso compartilhado.
 - [x] Implementar lógica de atualização automática de permissão ao fazer upgrade de plano (hook no módulo `payments`).
 - [x] Adicionar testes de integração para o módulo `wallet-sharing` e os guardas de acesso compartilhado.
-- [ ] Adicionar testes para o módulo `notifications`.
+- [x] Adicionar testes para o módulo `notifications`.
 
 #### Frontend
-- [ ] Implementar componente `<NotificationBell />` com polling, drawer e ações inline de aceitar/recusar convite.
-- [ ] Criar página `/dashboard/notificacoes` com listagem paginada e filtros.
+- [x] Implementar componente `<NotificationBell />` com polling, drawer e ações inline de aceitar/recusar convite.
+- [x] Criar página `/dashboard/notificacoes` com listagem paginada e filtros.
 - [x] Criar página `/dashboard/compartilhamento` com abas de acessos concedidos e recebidos.
 - [x] Criar página pública `/convites/[token]` para aceite/recusa via link de e-mail.
 - [x] Implementar componente `<WalletSwitcher />` no header do dashboard.
@@ -890,6 +1079,8 @@ Suíte implementada nesta etapa:
 
 Foco do lote: completar a experiência com notificações in-app e elevar robustez operacional antes de considerar a feature finalizada.
 
+Status: concluído.
+
 ### Escopo do Lote 3
 
 1. Model e módulo `notifications` no backend.
@@ -994,13 +1185,42 @@ Legenda de estimativa:
 | `L3-08` Regressão E2E cross-lotes | P0 | `L3-07`, `L2-08` | M | Garantir que notificações não quebram fluxo de compartilhamento |
 | `L3-09` Hardening operacional | P1 | `L3-08` | S | Logs estruturados, revisão de índices e documentação final de operação |
 
+### Lote 4 - Créditos + Análise On-Demand de Relatórios
+
+Status: concluído.
+
+| Ticket | Prioridade | Dependências | Estimativa | Entrega objetiva |
+|---|---|---|---|---|
+| `L4-01` Modelagem Prisma de créditos | P0 | — | M | Criar `UserCreditBalance`, `CreditLedgerEntry` e `CreditTopupOrder` com índices e status |
+| `L4-02` Modelagem Prisma de análise reaproveitável | P0 | — | M | Criar `AssetReportSource`, `AssetReportAnalysis` e `UserAssetReportAccess` |
+| `L4-03` Checkout Stripe de recarga | P0 | `L4-01` | M | Permitir criação de checkout para top-up a partir de R$ 3,00 |
+| `L4-04` Confirmação de pagamento + crédito | P0 | `L4-03` | M | Creditar saldo via webhook Stripe com idempotência e ledger |
+| `L4-05` Serviço de saldo e extrato | P1 | `L4-01`, `L4-04` | S | Endpoints para consultar saldo e histórico de movimentações |
+| `L4-06` Busca automática de relatório | P0 | `L4-02` | M | Pipeline para localizar documento-base por ticker sem cobrar em caso de falha |
+| `L4-07` Upload manual de relatório | P1 | `L4-02` | M | Permitir fallback de upload quando busca automática não encontrar documento |
+| `L4-08` Serviço de análise com cache/reuso | P0 | `L4-02`, `L4-06` | L | Reutilizar análise existente por ticker + fingerprint antes de chamar OpenAI |
+| `L4-09` Regra de cobrança por plano | P0 | `L4-01`, `L4-08` | S | Debitar R$ 2,50 (`FREE`) e R$ 1,50 (`PREMIUM`) apenas em sucesso |
+| `L4-10` Controle de acesso por 30 dias | P0 | `L4-02`, `L4-09` | S | Conceder acesso temporário à análise para o usuário pagante |
+| `L4-11` UI de créditos no dashboard | P1 | `L4-05` | M | Tela de saldo, recarga e extrato simples |
+| `L4-12` UI de consulta/análise de relatório | P0 | `L4-06`, `L4-08`, `L4-10` | L | Busca por ticker, estados de loading/erro, fallback de upload e leitura da análise |
+| `L4-13` Testes integração financeiro + análise | P0 | `L4-04`, `L4-08`, `L4-09`, `L4-10` | L | Cobrir crédito, débito, não-cobrança em falha e reaproveitamento |
+| `L4-14` E2E do fluxo on-demand | P1 | `L4-11`, `L4-12`, `L4-13` | L | Cobrir recarga, compra da análise, acesso posterior e fallback sem cobrança |
+| `L4-15` Hardening operacional | P1 | `L4-13` | S | Logs, auditoria mínima, proteção contra dupla cobrança e documentação final |
+
 ### Sequência recomendada para execução
 
 1. Entregar todos os `P0` do Lote 1.
 2. Fechar `L1-09` antes de iniciar telas do Lote 2.
 3. Entregar `P0` do Lote 2 e validar E2E mínimo (`L2-08`).
 4. Implementar `P0` do Lote 3 e rodar regressão cruzada (`L3-08`).
-5. Finalizar com `P1` de polimento em ordem: `L1-10` -> `L2-09` -> `L3-09`.
+5. Implementar `P0` do Lote 4 em ordem: `L4-01` -> `L4-04` -> `L4-06` -> `L4-10`.
+6. Finalizar com `P1` de polimento em ordem: `L1-10` -> `L2-09` -> `L3-09` -> `L4-15`.
+
+### Documentação operacional por feature
+
+- Template base para novas features: `docs/features/_template.md`
+- Documento operacional do Lote 4: `docs/features/lote-4-creditos-relatorios.md`
+- Regra de manutenção: sempre atualizar primeiro `Status atual` e `Próximo passo exato` no documento da feature antes de iniciar a próxima etapa.
 
 ### Marco de release (go/no-go)
 
@@ -1013,4 +1233,11 @@ Release completo aprovado quando:
 1. Todos os tickets `P0` e `P1` dos Lotes 1, 2 e 3 estão concluídos.
 2. `L3-07` e `L3-08` estão verdes no CI.
 3. Observabilidade mínima e documentação operacional estão atualizadas.
+
+Release da feature de créditos aprovado quando:
+1. Todos os tickets `P0` do Lote 4 estão concluídos.
+2. Não existe cenário de dupla cobrança conhecido em top-up ou débito de análise.
+3. Reaproveitamento de análise e acesso de 30 dias estão cobertos por teste.
+4. Fluxos “relatório não encontrado” e “falha antes da geração” não cobram o usuário.
+5. Fallback manual e acesso posterior estão validados por E2E dedicado.
 

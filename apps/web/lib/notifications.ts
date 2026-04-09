@@ -4,6 +4,8 @@ export type NotificationType =
   | "WALLET_INVITE_DECLINED"
   | "WALLET_INVITE_REVOKED";
 
+export type NotificationStatusFilter = "all" | "read" | "unread";
+
 export type NotificationItem = {
   id: string;
   type: NotificationType;
@@ -24,6 +26,19 @@ export type NotificationItem = {
   createdAt: string;
   updatedAt: string;
 };
+
+export const notificationTypeOptions: Array<{ label: string; value: NotificationType }> = [
+  { label: "Convite recebido", value: "WALLET_INVITE_SENT" },
+  { label: "Convite aceito", value: "WALLET_INVITE_ACCEPTED" },
+  { label: "Convite recusado", value: "WALLET_INVITE_DECLINED" },
+  { label: "Acesso revogado", value: "WALLET_INVITE_REVOKED" },
+];
+
+export const notificationStatusOptions: Array<{ label: string; value: NotificationStatusFilter }> = [
+  { label: "Todas", value: "all" },
+  { label: "Não lidas", value: "unread" },
+  { label: "Lidas", value: "read" },
+];
 
 export function formatNotificationDate(value: string) {
   const date = new Date(value);
