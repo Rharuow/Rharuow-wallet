@@ -6,6 +6,10 @@
 app = 'rharuow-wallet'
 primary_region = 'ams'
 
+[processes]
+  app = 'npm run start'
+  worker = 'npm run start:worker:reports'
+
 [build]
 
 [env]
