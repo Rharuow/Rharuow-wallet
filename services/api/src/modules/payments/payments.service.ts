@@ -48,6 +48,20 @@ function toCheckoutCreationError(error: unknown) {
   return toStatusError(message, statusCode)
 }
 
+function isMissingStripeCustomerError(error: unknown) {
+  if (!isStripeLikeError(error)) {
+    return false
+  }
+
+  const message = typeof error.message === 'string' ? error.message.toLowerCase() : ''
+
+  return (
+    error.code === 'resource_missing' ||
+    message.includes('no such customer') ||
+    message.includes('similar object exists in test mode')
+  )
+}
+
 function getCreditTopupPaymentMethodTypes(): CreditTopupPaymentMethodType[] {
   const raw = process.env.STRIPE_CREDIT_TOPUP_PAYMENT_METHOD_TYPES ?? 'card,pix'
   const methods = raw
@@ -134,6 +148,25 @@ async function ensureStripeCustomer(userId: string, stripeClient: StripeClient =
   })
 
   let customerId = user.stripeCustomerId
+
+  if (customerId) {
+    try {
+      await stripeClient.customers.retrieve(customerId)
+    } catch (error) {
+      if (!isMissingStripeCustomerError(error)) {
+        throw error
+      }
+
+      console.warn('[payments] stripe-customer-recreated', {
+        userId,
+        previousCustomerId: customerId,
+        reason: error instanceof Error ? error.message : 'UNKNOWN_ERROR',
+      })
+
+      customerId = null
+    }
+  }
+
   if (!customerId) {
     const customer = await stripeClient.customers.create({ email: user.email })
     customerId = customer.id

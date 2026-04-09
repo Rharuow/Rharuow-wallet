@@ -188,6 +188,66 @@ test('credits-topup-payments.spec: propaga mensagem e status de falha do checkou
   assert.equal(checkout.checkoutUrl, 'https://stripe.test/checkout/credit-topup-card-only')
 })
 
+test('credits-topup-payments.spec: recria customer quando stripeCustomerId salvo pertence a outro modo', async () => {
+  const user = await createTestUser({ name: 'Topup Wrong Mode Customer User' })
+
+  await prisma.user.update({
+    where: { id: user.id },
+    data: { stripeCustomerId: 'cus_test_mode_only' },
+  })
+
+  let customerCreateCount = 0
+  let customerRetrieveCount = 0
+
+  const fakeStripe = {
+    customers: {
+      retrieve: async () => {
+        customerRetrieveCount += 1
+        throw Object.assign(new Error("No such customer: 'cus_test_mode_only'; a similar object exists in test mode, but a live mode key was used to make this request."), {
+          rawStatusCode: 404,
+          code: 'resource_missing',
+          type: 'StripeInvalidRequestError',
+        })
+      },
+      create: async () => {
+        customerCreateCount += 1
+        return { id: 'cus_live_mode_recreated' }
+      },
+    },
+    checkout: {
+      sessions: {
+        create: async () => ({
+          id: 'cs_test_credit_topup_recreated_customer',
+          url: 'https://stripe.test/checkout/recreated-customer',
+        }),
+      },
+    },
+    subscriptions: {
+      retrieve: async () => {
+        throw new Error('subscriptions.retrieve should not be called in this test')
+      },
+    },
+    webhooks: {
+      constructEvent: () => {
+        throw new Error('webhooks.constructEvent should not be called in this test')
+      },
+    },
+  } as unknown as Pick<typeof import('../lib/stripe').stripe, 'checkout' | 'customers' | 'subscriptions' | 'webhooks'>
+
+  const checkout = await createCreditTopupCheckoutSession(user.id, 20, fakeStripe)
+
+  assert.equal(customerRetrieveCount, 1)
+  assert.equal(customerCreateCount, 1)
+  assert.equal(checkout.checkoutSessionId, 'cs_test_credit_topup_recreated_customer')
+
+  const updatedUser = await prisma.user.findUniqueOrThrow({
+    where: { id: user.id },
+    select: { stripeCustomerId: true },
+  })
+
+  assert.equal(updatedUser.stripeCustomerId, 'cus_live_mode_recreated')
+})
+
 test('credits-topup-payments.spec: mantém falha quando nao existe metodo alternativo configurado', async () => {
   const user = await createTestUser({ name: 'Topup Pix Only Error User' })
   const previousMethods = process.env.STRIPE_CREDIT_TOPUP_PAYMENT_METHOD_TYPES
