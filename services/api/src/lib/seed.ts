@@ -36,8 +36,6 @@ const PT_TRANSLATIONS: Record<string, string> = {
  * Chamado automaticamente ao startar o servidor.
  */
 export async function seed(logger?: { info: (msg: string) => void }) {
-  const log = (msg: string) => logger?.info(msg) ?? console.info(msg)
-
   // --- Planos (FREE / PREMIUM) ---
   for (const name of ['FREE', 'PREMIUM'] as const) {
     await prisma.plan.upsert({
@@ -46,7 +44,6 @@ export async function seed(logger?: { info: (msg: string) => void }) {
       create: { name },
     })
   }
-  log('[seed] Planos FREE e PREMIUM sincronizados.')
 
   const premiumPlan = await prisma.plan.findUniqueOrThrow({ where: { name: 'PREMIUM' } })
 
@@ -54,18 +51,12 @@ export async function seed(logger?: { info: (msg: string) => void }) {
   let rootRole = await prisma.role.findUnique({ where: { name: 'Root' } })
   if (!rootRole) {
     rootRole = await prisma.role.create({ data: { name: 'Root' } })
-    log('[seed] Role "Root" criada.')
-  } else {
-    log('[seed] Role "Root" já existe.')
   }
 
   // --- User role ---
   const userRole = await prisma.role.findUnique({ where: { name: 'User' } })
   if (!userRole) {
     await prisma.role.create({ data: { name: 'User' } })
-    log('[seed] Role "User" criada.')
-  } else {
-    log('[seed] Role "User" já existe.')
   }
 
   // --- Usuário default ---
@@ -90,7 +81,6 @@ export async function seed(logger?: { info: (msg: string) => void }) {
         planExpiresAt: null,
       },
     })
-    log(`[seed] Usuário default "${defaultEmail}" criado com role Root e plano PREMIUM permanente.`)
   } else {
     // Garante que o usuário default existente tenha plano PREMIUM permanente
     if (existing.planId !== premiumPlan.id || existing.planExpiresAt !== null) {
@@ -98,9 +88,6 @@ export async function seed(logger?: { info: (msg: string) => void }) {
         where: { id: existing.id },
         data: { planId: premiumPlan.id, planExpiresAt: null },
       })
-      log(`[seed] Plano do usuário default "${defaultEmail}" atualizado para PREMIUM permanente.`)
-    } else {
-      log(`[seed] Usuário default "${defaultEmail}" já existe.`)
     }
   }
 
@@ -120,11 +107,8 @@ export async function seed(logger?: { info: (msg: string) => void }) {
         },
       })
     }
-
-    log(`[seed] ${availableSectors.length} segmentos sincronizados a partir da brapi.`)
-  } catch (err) {
+  } catch {
     // Falha na brapi não deve impedir a inicialização do servidor
-    log(`[seed] Aviso: não foi possível sincronizar segmentos via brapi — ${(err as Error).message}`)
   }
 
   // --- Áreas de custo globais (padrão do sistema) ---
@@ -142,5 +126,4 @@ export async function seed(logger?: { info: (msg: string) => void }) {
       await prisma.costArea.create({ data: { name, userId: null } })
     }
   }
-  log(`[seed] ${DEFAULT_COST_AREAS.length} áreas de custo globais sincronizadas.`)
 }

@@ -34,13 +34,9 @@ export async function buildServer() {
       process.env.NODE_ENV === 'test'
         ? false
         : {
-            level: process.env.LOG_LEVEL ?? 'info',
+            level: process.env.LOG_LEVEL ?? 'warn',
           },
   })
-
-  console.log(`REPORT_AUTO_WEB_SEARCH_ENABLED = ${process.env.REPORT_AUTO_WEB_SEARCH_ENABLED}`)
-  console.log(`OPENAI_MOCK_MODE = ${process.env.OPENAI_MOCK_MODE}`)
-  
 
   server.addContentTypeParser(
     'application/json',
@@ -167,7 +163,13 @@ export async function buildServer() {
     }
 
     const statusCode = (error as { statusCode?: number }).statusCode ?? 500
-    server.log.error(error)
+    server.log.error(
+      {
+        message: error.message,
+        statusCode,
+      },
+      'request-failed',
+    )
 
     return reply.status(statusCode).send({
       error: error.message ?? 'Internal Server Error',

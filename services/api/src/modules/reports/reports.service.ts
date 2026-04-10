@@ -9,6 +9,7 @@ import {
   PlanType,
   Prisma,
 } from '@prisma/client'
+import { appLogger } from '../../lib/logger'
 import { getObject, putObject } from '../../lib/object-storage'
 import { isOpenAiMockEnabled } from '../../lib/openai-mode'
 import { prisma } from '../../lib/prisma'
@@ -107,7 +108,7 @@ function logReportSourceDebug(event: string, payload: Record<string, unknown>) {
     return
   }
 
-  console.info('[reports.source-debug]', {
+  appLogger.debug('reports-source-debug', {
     event,
     ...payload,
   })

@@ -1,5 +1,6 @@
 import Stripe from 'stripe'
 import { stripe } from '../../lib/stripe'
+import { appLogger } from '../../lib/logger'
 import { prisma } from '../../lib/prisma'
 import { createCreditTopupOrder, markCreditTopupOrderPaid } from '../credits/credits.service'
 import { syncWalletAccessPermissionsForUser } from '../wallet-sharing/wallet-sharing.service'
@@ -157,7 +158,7 @@ async function ensureStripeCustomer(userId: string, stripeClient: StripeClient =
         throw error
       }
 
-      console.warn('[payments] stripe-customer-recreated', {
+      appLogger.warn('payments-stripe-customer-recreated', {
         userId,
         previousCustomerId: customerId,
         reason: error instanceof Error ? error.message : 'UNKNOWN_ERROR',
@@ -235,7 +236,7 @@ export async function createCreditTopupCheckoutSession(
         fallbackPaymentMethodTypes.length > 0 &&
         shouldRetryCreditTopupWithoutPix(error, configuredPaymentMethodTypes)
       ) {
-        console.warn('[payments] credit-topup-checkout-retrying-without-pix', {
+        appLogger.warn('payments-credit-topup-checkout-retrying-without-pix', {
           userId,
           orderId: order.id,
           originalPaymentMethodTypes: configuredPaymentMethodTypes,
@@ -523,7 +524,7 @@ export async function handleStripeEvent(event: Stripe.Event, stripeClient: Strip
 
     case 'invoice.payment_failed': {
       const invoice = event.data.object as Stripe.Invoice
-      console.warn(`[payments] Falha no pagamento da fatura ${invoice.id}`)
+      appLogger.warn('payments-invoice-payment-failed', { invoiceId: invoice.id })
       break
     }
   }

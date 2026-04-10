@@ -3,6 +3,7 @@ import crypto from 'node:crypto'
 import { prisma } from '../../lib/prisma'
 import { sendVerificationEmail, sendPasswordResetEmail } from '../../lib/mailer'
 import { publishUserRegistered } from '../../lib/kafka'
+import { appLogger } from '../../lib/logger'
 import type { LoginInput, RegisterInput, ForgotPasswordInput, ResetPasswordInput, ResendVerificationInput } from './auth.schema'
 
 export async function registerUser(input: RegisterInput) {
@@ -75,9 +76,9 @@ export async function registerUser(input: RegisterInput) {
     await sendVerificationEmail(user.email, token)
   } catch (err) {
     verificationEmailSent = false
-    console.error('[Auth] Falha ao enviar e-mail de verificação no cadastro:', {
+    appLogger.error('auth-verification-email-send-failed', {
       email: user.email,
-      error: err,
+      error: err instanceof Error ? err.message : String(err),
     })
   }
 
@@ -90,7 +91,10 @@ export async function registerUser(input: RegisterInput) {
       registeredAt: user.createdAt,
     })
   } catch (err) {
-    console.error('[Kafka] Falha ao publicar evento user.registered:', err)
+    appLogger.error('auth-user-registered-publish-failed', {
+      userId: user.id,
+      error: err instanceof Error ? err.message : String(err),
+    })
   }
 
   return {
@@ -211,9 +215,9 @@ export async function resendVerificationEmail(input: ResendVerificationInput) {
   try {
     await sendVerificationEmail(user.email, token)
   } catch (err) {
-    console.error('[Auth] Falha ao reenviar e-mail de verificação:', {
+    appLogger.error('auth-verification-email-resend-failed', {
       email: user.email,
-      error: err,
+      error: err instanceof Error ? err.message : String(err),
     })
   }
 }

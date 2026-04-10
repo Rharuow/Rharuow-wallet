@@ -1,5 +1,6 @@
 import crypto from 'node:crypto'
 import { InviteStatus, PlanType, WalletPermission } from '@prisma/client'
+import { appLogger } from '../../lib/logger'
 import { sendWalletInviteEmail } from '../../lib/mailer'
 import { prisma } from '../../lib/prisma'
 import { createNotifications, type NotificationPayload } from '../notifications/notifications.service'
@@ -38,7 +39,7 @@ async function emitNotificationsSafely(
   try {
     await createNotifications(notifications)
   } catch (error) {
-    console.error('[notifications] emit_failed', {
+    appLogger.error('wallet-sharing-notifications-emit-failed', {
       error: error instanceof Error ? error.message : String(error),
       notificationsCount: notifications.length,
     })
@@ -125,11 +126,6 @@ export async function createInvite(ownerId: string, data: CreateWalletInviteInpu
           ]
         : [],
     )
-    console.info('[wallet-sharing] invite.resent', {
-      inviteId: refreshedInvite.id,
-      ownerId,
-      guestEmail: refreshedInvite.guestEmail,
-    })
 
     return refreshedInvite
   }
@@ -179,11 +175,6 @@ export async function createInvite(ownerId: string, data: CreateWalletInviteInpu
         ]
       : [],
   )
-  console.info('[wallet-sharing] invite.created', {
-    inviteId: invite.id,
-    ownerId,
-    guestEmail: invite.guestEmail,
-  })
 
   return invite
 }
@@ -267,13 +258,6 @@ export async function acceptInvite(token: string, guestId: string) {
     return createdAccess
   })
 
-  console.info('[wallet-sharing] invite.accepted', {
-    inviteId: invite.id,
-    ownerId: invite.ownerId,
-    guestId,
-    permission,
-  })
-
   await emitNotificationsSafely([
     {
       userId: invite.owner.id,
@@ -312,12 +296,6 @@ export async function declineInvite(token: string, guestId: string) {
     where: { id: invite.id },
     data: { status: InviteStatus.DECLINED, guestId },
     include: { owner: { select: { id: true, email: true, name: true } } },
-  })
-
-  console.info('[wallet-sharing] invite.declined', {
-    inviteId: invite.id,
-    ownerId: invite.ownerId,
-    guestId,
   })
 
   await emitNotificationsSafely([
@@ -361,11 +339,6 @@ export async function revokeInvite(ownerId: string, inviteId: string) {
       where: { id: invite.id },
       data: { status: InviteStatus.REVOKED },
     })
-  })
-
-  console.info('[wallet-sharing] invite.revoked', {
-    inviteId,
-    ownerId,
   })
 
   await emitNotificationsSafely(
@@ -431,14 +404,6 @@ export async function syncWalletAccessPermissionsForUser(userId: string) {
     },
     data: { permission },
   })
-
-  if (result.count > 0) {
-    console.info('[wallet-sharing] access.permission_synced', {
-      guestId: userId,
-      permission,
-      count: result.count,
-    })
-  }
 
   return { permission, updatedCount: result.count }
 }

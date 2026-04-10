@@ -1,4 +1,5 @@
 import { Admin, Consumer, Kafka, Partitioners, Producer, SASLOptions } from 'kafkajs'
+import { appLogger } from './logger'
 
 const brokers = (process.env.KAFKA_BROKERS ?? 'localhost:9092')
   .split(',')
@@ -119,7 +120,7 @@ export async function ensureKafkaTopic(topic: string): Promise<void> {
         preferredReplicationFactor > 1 &&
         isInvalidReplicationFactorError(error)
       ) {
-        console.warn('[kafka] topic-create-retry-single-replica', {
+        appLogger.warn('kafka-topic-create-retry-single-replica', {
           topic,
           preferredReplicationFactor,
           fallbackReplicationFactor: 1,

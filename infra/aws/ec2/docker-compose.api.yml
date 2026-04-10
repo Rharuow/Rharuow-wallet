@@ -1,0 +1,23 @@
+services:
+  api:
+    build:
+      context: ../../..
+      dockerfile: Dockerfile
+    image: rharuowallet-api:ec2
+    restart: unless-stopped
+    env_file:
+      - .env.api
+    ports:
+      - '127.0.0.1:8080:3001'
+    healthcheck:
+      test:
+        [
+          'CMD',
+          'node',
+          '-e',
+          "fetch('http://127.0.0.1:3001/health').then((res)=>process.exit(res.ok?0:1)).catch(()=>process.exit(1))",
+        ]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
