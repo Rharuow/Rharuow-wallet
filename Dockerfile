@@ -24,7 +24,7 @@ RUN npx prisma generate && npm run build
 # -------------------------------------------------------
 # Stage 2: Production
 # -------------------------------------------------------
-FROM node:20-alpine AS runner
+FROM node:22-slim AS runner
 
 WORKDIR /app
 
