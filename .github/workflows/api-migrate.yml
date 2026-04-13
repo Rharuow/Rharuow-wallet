@@ -13,6 +13,7 @@ jobs:
       - self-hosted
       - linux
       - x64
+      - prod-migrations
     timeout-minutes: 15
     steps:
       - name: Checkout
