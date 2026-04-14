@@ -1,6 +1,14 @@
 name: API Migrate
 
 on:
+  push:
+    branches: [main]
+    paths:
+      - "services/api/**"
+      - "services/api/prisma/**"
+      - "Dockerfile"
+      - ".github/workflows/api-migrate.yml"
+      - ".github/workflows/api-release.yml"
   workflow_dispatch:
 
 concurrency:

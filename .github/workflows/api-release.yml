@@ -1,13 +1,9 @@
 name: API Release
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - "services/api/**"
-      - "infra/aws/ec2/docker-compose.api.yml"
-      - "Dockerfile"
-      - ".github/workflows/api-release.yml"
+  workflow_run:
+    workflows: ["API Migrate"]
+    types: [completed]
   workflow_dispatch:
 
 concurrency:
@@ -16,6 +12,13 @@ concurrency:
 
 jobs:
   deploy_ec2:
+    if: |
+      github.event_name == 'workflow_dispatch' ||
+      (
+        github.event_name == 'workflow_run' &&
+        github.event.workflow_run.conclusion == 'success' &&
+        github.event.workflow_run.head_branch == 'main'
+      )
     runs-on:
       - self-hosted
       - linux
