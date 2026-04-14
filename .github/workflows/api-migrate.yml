@@ -9,6 +9,14 @@ on:
       - "Dockerfile"
       - ".github/workflows/api-migrate.yml"
       - ".github/workflows/api-release.yml"
+  pull_request:
+    branches: [main]
+    paths:
+      - "services/api/**"
+      - "services/api/prisma/**"
+      - "Dockerfile"
+      - ".github/workflows/api-migrate.yml"
+      - ".github/workflows/api-release.yml"
   workflow_dispatch:
 
 concurrency:
@@ -16,7 +24,33 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  migrate_pr_gate:
+    name: Migrate
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install deps (api workspace)
+        run: npm ci --workspace=services/api
+
+      - name: Prisma schema validate (PR safe)
+        working-directory: services/api
+        env:
+          DATABASE_URL: postgresql://placeholder:placeholder@localhost:5432/placeholder
+          DIRECT_URL: postgresql://placeholder:placeholder@localhost:5432/placeholder
+        run: npx prisma validate
+
   migrate:
+    name: migrate
+    if: github.event_name != 'pull_request'
     runs-on:
       - self-hosted
       - linux
