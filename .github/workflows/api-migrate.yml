@@ -43,6 +43,9 @@ jobs:
 
       - name: Prisma schema validate (PR safe)
         working-directory: services/api
+        env:
+          DATABASE_URL: postgresql://placeholder:placeholder@localhost:5432/placeholder
+          DIRECT_URL: postgresql://placeholder:placeholder@localhost:5432/placeholder
         run: npx prisma validate
 
   migrate:
