@@ -312,6 +312,75 @@ sudo journalctl -u actions.runner* -n 50 --no-pager
 
 ---
 
+## 🔁 Rollback Operacional (Simples)
+
+Use este procedimento quando o deploy subir, mas a API falhar em produção.
+
+### Opção A: Voltar para o commit anterior
+
+```bash
+cd /opt/rharuowallet
+
+# Garantir referência atualizada do repositório
+git fetch --all --prune
+
+# Voltar o checkout para 1 commit antes do main remoto
+git checkout --detach origin/main~1
+
+# Recriar containers com a versão anterior
+docker compose -f infra/aws/ec2/docker-compose.api.yml up --build -d --force-recreate --remove-orphans
+
+# Validar saúde da API
+curl -fsS --retry 20 --retry-delay 2 --retry-all-errors http://127.0.0.1:8080/health
+
+# Se precisar investigar
+docker compose -f infra/aws/ec2/docker-compose.api.yml logs --tail=200
+```
+
+### Opção B: Voltar para um commit específico
+
+```bash
+cd /opt/rharuowallet
+git fetch --all --prune
+
+# Substituir pelo SHA desejado
+TARGET_SHA="COLOQUE_O_SHA_AQUI"
+git checkout --detach "$TARGET_SHA"
+
+docker compose -f infra/aws/ec2/docker-compose.api.yml up --build -d --force-recreate --remove-orphans
+curl -fsS --retry 20 --retry-delay 2 --retry-all-errors http://127.0.0.1:8080/health
+```
+
+### Atalho one-liner (emergência)
+
+Rollback para o commit anterior do `main` remoto, com deploy e healthcheck no mesmo comando:
+
+```bash
+cd /opt/rharuowallet && git fetch --all --prune && git checkout --detach origin/main~1 && docker compose -f infra/aws/ec2/docker-compose.api.yml up --build -d --force-recreate --remove-orphans && curl -fsS --retry 20 --retry-delay 2 --retry-all-errors http://127.0.0.1:8080/health
+```
+
+Rollback para um commit específico (substituir `SEU_SHA`):
+
+```bash
+cd /opt/rharuowallet && git fetch --all --prune && git checkout --detach SEU_SHA && docker compose -f infra/aws/ec2/docker-compose.api.yml up --build -d --force-recreate --remove-orphans && curl -fsS --retry 20 --retry-delay 2 --retry-all-errors http://127.0.0.1:8080/health
+```
+
+### Retornar ao fluxo normal (main)
+
+```bash
+cd /opt/rharuowallet
+git checkout main
+git pull --ff-only origin main
+```
+
+### Observações importantes
+
+- Se houver migração destrutiva já aplicada no banco, rollback de código pode não ser suficiente.
+- Preferir migrações backward-compatible para facilitar rollback seguro.
+- Registrar no incidente: SHA deployado, SHA de rollback, horário e motivo.
+
+---
+
 ## 📝 Referência Rápida
 
 | Tarefa | Comando |

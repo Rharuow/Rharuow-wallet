@@ -31,9 +31,29 @@ jobs:
           set -e
           cd /opt/rharuowallet
           COMPOSE_FILE="infra/aws/ec2/docker-compose.api.yml"
+
+          echo "[deploy] Event: $GITHUB_EVENT_NAME"
+          echo "[deploy] Triggered by: $GITHUB_ACTOR"
+          echo "[deploy] Workflow run id: $GITHUB_RUN_ID"
+
           git fetch --all --prune
           git checkout main
           git pull --ff-only origin main
+
+          DEPLOYED_SHA="$(git rev-parse HEAD)"
+          DEPLOYED_SHA_SHORT="$(git rev-parse --short HEAD)"
+          DEPLOYED_SUBJECT="$(git log -1 --pretty=%s)"
+          DEPLOYED_AT_UTC="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+
+          echo "[deploy] Branch: main"
+          echo "[deploy] Commit: $DEPLOYED_SHA_SHORT ($DEPLOYED_SHA)"
+          echo "[deploy] Message: $DEPLOYED_SUBJECT"
+          echo "[deploy] Timestamp (UTC): $DEPLOYED_AT_UTC"
+
+          printf '%s | branch=main | sha=%s | actor=%s | run=%s | message=%s\n' \
+            "$DEPLOYED_AT_UTC" "$DEPLOYED_SHA" "$GITHUB_ACTOR" "$GITHUB_RUN_ID" "$DEPLOYED_SUBJECT" \
+            >> /opt/rharuowallet/.deploy-history.log
+
           docker compose -f "$COMPOSE_FILE" up --build -d --remove-orphans
 
           # Give the API time to boot and report diagnostics if healthcheck fails.
