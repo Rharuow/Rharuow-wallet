@@ -27,8 +27,15 @@ jobs:
         run: |
           set -e
           cd /opt/rharuowallet
+          COMPOSE_FILE="infra/aws/ec2/docker-compose.api.yml"
           git fetch --all --prune
           git checkout main
           git pull --ff-only origin main
-          docker compose -f infra/aws/ec2/docker-compose.api.yml up --build -d --remove-orphans
-          curl -fsS http://127.0.0.1:8080/health
+          docker compose -f "$COMPOSE_FILE" up --build -d --remove-orphans
+
+          # Give the API time to boot and report diagnostics if healthcheck fails.
+          if ! curl -fsS --retry 20 --retry-delay 2 --retry-all-errors http://127.0.0.1:8080/health; then
+            docker compose -f "$COMPOSE_FILE" ps || true
+            docker compose -f "$COMPOSE_FILE" logs --tail=200 || true
+            exit 1
+          fi
