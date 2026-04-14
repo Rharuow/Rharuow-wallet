@@ -4,6 +4,14 @@ on:
   workflow_run:
     workflows: ["API Migrate"]
     types: [completed]
+  pull_request:
+    branches: [main]
+    paths:
+      - "services/api/**"
+      - "infra/aws/ec2/docker-compose.api.yml"
+      - "Dockerfile"
+      - ".github/workflows/api-migrate.yml"
+      - ".github/workflows/api-release.yml"
   workflow_dispatch:
 
 concurrency:
@@ -11,6 +19,14 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  release_pr_gate:
+    name: Release
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Release gate (PR)
+        run: echo "Release to EC2 is executed only after merge to main and successful API Migrate."
+
   deploy_ec2:
     if: |
       github.event_name == 'workflow_dispatch' ||
