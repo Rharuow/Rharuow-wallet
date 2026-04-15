@@ -96,7 +96,9 @@ export const StockDetailSchema = z.object({
     dividendRate: z.number().nullable(),
     dividendYield: z.number().nullable(),
     lastDividendValue: z.number().nullable(),
-  }).nullable(),
+    exDividendDate: z.string().nullable().optional(),
+    dividendDate: z.string().nullable().optional(),
+  }).passthrough().nullable(),
   // Financeiro
   financialData: z.object({
     totalRevenue: z.number().nullable(),
@@ -116,7 +118,7 @@ export const StockDetailSchema = z.object({
     quickRatio: z.number().nullable(),
     revenueGrowth: z.number().nullable(),
     earningsGrowth: z.number().nullable(),
-  }).nullable(),
+  }).passthrough().nullable(),
   // Estatísticas
   defaultKeyStatistics: z.object({
     enterpriseValue: z.number().nullable(),
@@ -129,7 +131,13 @@ export const StockDetailSchema = z.object({
     enterpriseToRevenue: z.number().nullable(),
     enterpriseToEbitda: z.number().nullable(),
     beta: z.number().nullable(),
-  }).nullable(),
-})
+    trailingAnnualDividendRate: z.number().nullable().optional(),
+    trailingAnnualDividendYield: z.number().nullable().optional(),
+    lastDividendValue: z.number().nullable().optional(),
+  }).passthrough().nullable(),
+  balanceSheetHistory: z.unknown().nullable().optional(),
+  incomeStatementHistory: z.unknown().nullable().optional(),
+  cashflowHistory: z.unknown().nullable().optional(),
+}).passthrough()
 
 export type StockDetail = z.infer<typeof StockDetailSchema>

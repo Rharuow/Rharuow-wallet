@@ -19,8 +19,8 @@ export function StockAnalysisCard({ ticker }: Props) {
       <OnDemandReportCard
         initialAssetType="STOCK"
         initialTicker={ticker}
-        title="Relatório on-demand do ativo"
-        subtitle="Gera uma leitura fundamentada a partir de um documento-base automático, com cobrança apenas em sucesso."
+        title="Relatório do ativo"
+        subtitle="Gera uma leitura fundamentada a partir da melhor fonte disponível para o ticker, com cobrança apenas em sucesso."
       />
     </div>
   );

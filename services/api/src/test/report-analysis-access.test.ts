@@ -1,5 +1,9 @@
 import assert from 'node:assert/strict'
-import { AssetReportAssetType, AssetReportSourceKind } from '@prisma/client'
+import {
+  AssetReportAssetType,
+  AssetReportSourceKind,
+  ReportMode,
+} from '@prisma/client'
 import { after, beforeEach, test } from 'node:test'
 import { prisma } from '../lib/prisma'
 import {
@@ -25,9 +29,13 @@ after(async () => {
 })
 
 test('report-analysis-access.spec: reaproveita analise valida pelo fingerprint do documento', async () => {
+  const monthKey = '2026-04'
+
   const source = await upsertAssetReportSource({
     assetType: AssetReportAssetType.FII,
     ticker: 'mxrf11',
+    reportMode: ReportMode.BRAPI_TICKER,
+    monthKey,
     sourceKind: AssetReportSourceKind.AUTO_FOUND,
     sourceUrl: 'https://example.com/mxrf11-report.pdf',
     documentFingerprint: 'mxrf11-fp-v1',
@@ -36,6 +44,8 @@ test('report-analysis-access.spec: reaproveita analise valida pelo fingerprint d
   const analysis = await upsertAssetReportAnalysis({
     assetType: AssetReportAssetType.FII,
     ticker: 'mxrf11',
+    reportMode: ReportMode.BRAPI_TICKER,
+    monthKey,
     sourceId: source.id,
     analysisText: 'Analise do relatorio MXRF11',
     model: 'gpt-4o-mini',
@@ -45,7 +55,8 @@ test('report-analysis-access.spec: reaproveita analise valida pelo fingerprint d
   const reusable = await findReusableAssetReportAnalysis({
     assetType: AssetReportAssetType.FII,
     ticker: 'MXRF11',
-    documentFingerprint: 'mxrf11-fp-v1',
+    reportMode: ReportMode.BRAPI_TICKER,
+    monthKey,
   })
 
   assert.ok(reusable)
@@ -55,10 +66,13 @@ test('report-analysis-access.spec: reaproveita analise valida pelo fingerprint d
 
 test('report-analysis-access.spec: ignora analise expirada e concede acesso por 30 dias', async () => {
   const user = await createTestUser({ name: 'Report Access User' })
+  const monthKey = '2026-04'
 
   const expiredSource = await upsertAssetReportSource({
     assetType: AssetReportAssetType.STOCK,
     ticker: 'petr4',
+    reportMode: ReportMode.RI_UPLOAD_AI,
+    monthKey,
     sourceKind: AssetReportSourceKind.MANUAL_UPLOAD,
     originalFileName: 'petr4-report.pdf',
     documentFingerprint: 'petr4-fp-old',
@@ -67,6 +81,8 @@ test('report-analysis-access.spec: ignora analise expirada e concede acesso por 
   await upsertAssetReportAnalysis({
     assetType: AssetReportAssetType.STOCK,
     ticker: 'petr4',
+    reportMode: ReportMode.RI_UPLOAD_AI,
+    monthKey,
     sourceId: expiredSource.id,
     analysisText: 'Analise antiga',
     model: 'gpt-4o-mini',
@@ -76,6 +92,8 @@ test('report-analysis-access.spec: ignora analise expirada e concede acesso por 
   const expiredReusable = await findReusableAssetReportAnalysis({
     assetType: AssetReportAssetType.STOCK,
     ticker: 'PETR4',
+    reportMode: ReportMode.RI_UPLOAD_AI,
+    monthKey,
   })
 
   assert.equal(expiredReusable, null)
@@ -83,6 +101,8 @@ test('report-analysis-access.spec: ignora analise expirada e concede acesso por 
   const activeSource = await upsertAssetReportSource({
     assetType: AssetReportAssetType.STOCK,
     ticker: 'petr4',
+    reportMode: ReportMode.BRAPI_TICKER,
+    monthKey,
     sourceKind: AssetReportSourceKind.AUTO_FOUND,
     sourceUrl: 'https://example.com/petr4-report-new.pdf',
     documentFingerprint: 'petr4-fp-new',
@@ -91,6 +111,8 @@ test('report-analysis-access.spec: ignora analise expirada e concede acesso por 
   const activeAnalysis = await upsertAssetReportAnalysis({
     assetType: AssetReportAssetType.STOCK,
     ticker: 'petr4',
+    reportMode: ReportMode.BRAPI_TICKER,
+    monthKey,
     sourceId: activeSource.id,
     analysisText: 'Analise valida',
     model: 'gpt-4o-mini',
@@ -106,6 +128,8 @@ test('report-analysis-access.spec: ignora analise expirada e concede acesso por 
     userId: user.id,
     assetType: AssetReportAssetType.STOCK,
     ticker: 'PETR4',
+    reportMode: ReportMode.BRAPI_TICKER,
+    monthKey,
   })
 
   assert.ok(activeAccess)

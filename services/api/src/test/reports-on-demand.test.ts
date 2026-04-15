@@ -194,45 +194,38 @@ test('reports-on-demand.spec: não cobra quando o relatório não é encontrado 
   assert.equal(ledger.filter((entry) => entry.kind === 'DEBIT').length, 0)
 })
 
-test('reports-on-demand.spec: prioriza fonte oficial via busca web antes do fallback local', async () => {
-  const user = await createTestUser({ name: 'Web Search User', plan: PlanType.FREE })
-  await seedCredits(user.id, 5, 'web-search')
+test('reports-on-demand.spec: usa fonte estruturada BRAPI como origem principal no modo ticker', async () => {
+  const user = await createTestUser({ name: 'Brapi Source User', plan: PlanType.FREE })
+  await seedCredits(user.id, 5, 'brapi-source')
   const ticker = 'PETR4'
 
-  let webSearchCalls = 0
   const result = await createOnDemandReportAnalysis({
     userId: user.id,
     assetType: AssetReportAssetType.STOCK,
     ticker,
   }, {
-    resolveWebSearchSource: async () => {
-      webSearchCalls += 1
-      return {
-        assetType: AssetReportAssetType.STOCK,
-        ticker,
-        sourceKind: 'AUTO_FOUND' as const,
-        sourceUrl: 'https://ri.example.com/petr4-release.pdf',
-        documentFingerprint: 'fp-petr4-ir-v1',
-        metadata: {
-          discoveryMethod: 'OFFICIAL_IR_WEB_SEARCH',
-          title: 'Release de Resultados 1T26',
-          publisher: 'RI PETR4',
-          sourceType: 'release de resultados',
-          summary: 'Resumo encontrado em documento oficial de RI.',
-        },
-        promptContext: 'Resumo encontrado em documento oficial de RI.',
-      }
-    },
+    resolveAutoSource: async () => ({
+      assetType: AssetReportAssetType.STOCK,
+      ticker,
+      sourceKind: 'AUTO_FOUND' as const,
+      sourceUrl: `https://brapi.dev/quote/${ticker}`,
+      documentFingerprint: 'fp-petr4-brapi-v1',
+      metadata: {
+        provider: 'BRAPI',
+        symbol: ticker,
+      },
+      promptContext: 'Dados estruturados BRAPI para PETR4.',
+    }),
     generateAnalysis: async () => '• web 1\n• web 2\n• web 3\n• web 4\n• web 5',
     now: () => new Date('2026-04-04T12:00:00.000Z'),
   })
 
   assert.equal(result.outcome, 'GENERATED')
   assert.equal(result.chargedAmount, '2.5')
-  assert.equal(webSearchCalls, 1)
-  assert.equal(result.analysis.source.sourceUrl, 'https://ri.example.com/petr4-release.pdf')
-  const metadata = result.analysis.source.metadata as { discoveryMethod?: string } | null
-  assert.equal(metadata?.discoveryMethod, 'OFFICIAL_IR_WEB_SEARCH')
+  assert.equal(result.analysis.source.sourceUrl, 'https://brapi.dev/quote/PETR4')
+  const metadata = result.analysis.source.metadata as { provider?: string; symbol?: string } | null
+  assert.equal(metadata?.provider, 'BRAPI')
+  assert.equal(metadata?.symbol, 'PETR4')
 })
 
 test('reports-on-demand.spec: anexa apêndice de valuation com Graham e Bazin ao texto final', async () => {
@@ -340,7 +333,7 @@ test('reports-on-demand.spec: upload manual gera análise, reaproveita fingerpri
   assert.equal(generated.outcome, 'GENERATED')
   assert.equal(generated.analysis.source.sourceKind, 'MANUAL_UPLOAD')
   assert.equal(generated.analysis.source.originalFileName, 'abcd4-relatorio.txt')
-  assert.equal(generated.chargedAmount, '2.5')
+  assert.equal(generated.chargedAmount, '4')
 
   const reused = await createManualReportAnalysis({
     userId: premiumUser.id,
@@ -352,7 +345,7 @@ test('reports-on-demand.spec: upload manual gera análise, reaproveita fingerpri
   }, runtime)
 
   assert.equal(reused.outcome, 'REUSED')
-  assert.equal(reused.chargedAmount, '1.5')
+  assert.equal(reused.chargedAmount, '2.5')
   assert.equal(generateCalls, 1)
 
   await assert.rejects(
@@ -393,8 +386,205 @@ test('reports-on-demand.spec: upload manual gera análise, reaproveita fingerpri
   )
 
   const premiumBalance = await getCreditBalance(premiumUser.id)
-  assert.equal(new Prisma.Decimal(premiumBalance.balance).toFixed(2), '4.50')
+  assert.equal(new Prisma.Decimal(premiumBalance.balance).toFixed(2), '3.50')
 
   const premiumLedger = await listCreditLedger(premiumUser.id)
   assert.equal(premiumLedger.filter((entry) => entry.kind === 'DEBIT').length, 1)
+})
+
+test('reports-on-demand.spec: virada de mês invalida cache mensal da modalidade BRAPI', async () => {
+  const author = await createTestUser({ name: 'Month Boundary Author', plan: PlanType.FREE })
+  const other = await createTestUser({ name: 'Month Boundary Other', plan: PlanType.FREE })
+  await seedCredits(author.id, 6, 'month-author')
+  await seedCredits(other.id, 6, 'month-other')
+
+  let generateCalls = 0
+  const runtime = {
+    resolveAutoSource: async () => ({
+      assetType: AssetReportAssetType.STOCK,
+      ticker: 'PETR4',
+      sourceKind: 'AUTO_FOUND' as const,
+      sourceUrl: 'https://brapi.dev/quote/PETR4',
+      documentFingerprint: 'fp-petr4-shared',
+      metadata: { provider: 'test' },
+      promptContext: 'context',
+    }),
+    generateAnalysis: async () => {
+      generateCalls += 1
+      return '• cache 1\n• cache 2\n• cache 3\n• cache 4\n• cache 5'
+    },
+  }
+
+  const april = await createOnDemandReportAnalysis({
+    userId: author.id,
+    assetType: AssetReportAssetType.STOCK,
+    ticker: 'PETR4',
+  }, {
+    ...runtime,
+    now: () => new Date('2026-04-30T23:00:00.000Z'),
+  })
+
+  assert.equal(april.outcome, 'GENERATED')
+
+  const may = await createOnDemandReportAnalysis({
+    userId: other.id,
+    assetType: AssetReportAssetType.STOCK,
+    ticker: 'PETR4',
+  }, {
+    ...runtime,
+    now: () => new Date('2026-05-01T00:01:00.000Z'),
+  })
+
+  assert.equal(may.outcome, 'GENERATED')
+  assert.equal(generateCalls, 2)
+})
+
+test('reports-on-demand.spec: cache mensal é isolado por modalidade', async () => {
+  const user = await createTestUser({ name: 'Mode Isolation User', plan: PlanType.FREE })
+  await seedCredits(user.id, 10, 'mode-isolation')
+
+  let autoGenerateCalls = 0
+  let manualGenerateCalls = 0
+
+  const auto = await createOnDemandReportAnalysis({
+    userId: user.id,
+    assetType: AssetReportAssetType.STOCK,
+    ticker: 'ABCD4',
+  }, {
+    resolveAutoSource: async () => ({
+      assetType: AssetReportAssetType.STOCK,
+      ticker: 'ABCD4',
+      sourceKind: 'AUTO_FOUND' as const,
+      sourceUrl: 'https://brapi.dev/quote/ABCD4',
+      documentFingerprint: 'fp-abcd4-auto',
+      metadata: { provider: 'test' },
+      promptContext: 'context',
+    }),
+    generateAnalysis: async () => {
+      autoGenerateCalls += 1
+      return '• auto 1\n• auto 2\n• auto 3\n• auto 4\n• auto 5'
+    },
+    now: () => new Date('2026-04-14T12:00:00.000Z'),
+  })
+
+  assert.equal(auto.outcome, 'GENERATED')
+
+  const manual = await createManualReportAnalysis({
+    userId: user.id,
+    assetType: AssetReportAssetType.STOCK,
+    ticker: 'ABCD4',
+    originalFileName: 'abcd4-relatorio.txt',
+    contentType: 'text/plain',
+    fileBase64: Buffer.from(
+      'Relatorio fundamentalista da companhia ABCD4 com receita crescente, margem operacional estavel, disciplina de capital e riscos mapeados para os proximos trimestres.',
+      'utf8',
+    ).toString('base64'),
+  }, {
+    generateAnalysis: async () => {
+      manualGenerateCalls += 1
+      return '• manual 1\n• manual 2\n• manual 3\n• manual 4\n• manual 5'
+    },
+    now: () => new Date('2026-04-14T12:05:00.000Z'),
+  })
+
+  assert.equal(manual.outcome, 'GENERATED')
+  assert.equal(autoGenerateCalls, 1)
+  assert.equal(manualGenerateCalls, 1)
+})
+
+test('reports-on-demand.spec: RI reaproveita cache mensal entre usuarios e evita reprocessar upload', async () => {
+  const author = await createTestUser({ name: 'RI Cache Author', plan: PlanType.FREE })
+  const premium = await createTestUser({ name: 'RI Cache Premium', plan: PlanType.PREMIUM })
+  await seedCredits(author.id, 8, 'ri-cache-author')
+  await seedCredits(premium.id, 8, 'ri-cache-premium')
+
+  let generateCalls = 0
+  const runtime = {
+    generateAnalysis: async () => {
+      generateCalls += 1
+      return '• ri 1\n• ri 2\n• ri 3\n• ri 4\n• ri 5'
+    },
+    now: () => new Date('2026-04-14T12:00:00.000Z'),
+  }
+
+  const first = await createManualReportAnalysis({
+    userId: author.id,
+    assetType: AssetReportAssetType.STOCK,
+    ticker: 'PETR4',
+    originalFileName: 'petr4-ri-valid.txt',
+    contentType: 'text/plain',
+    fileBase64: Buffer.from(
+      'Relatorio de relacoes com investidores da PETR4 com comentarios sobre receita, margens, investimentos e riscos operacionais para o restante do ano.',
+      'utf8',
+    ).toString('base64'),
+  }, runtime)
+
+  assert.equal(first.outcome, 'GENERATED')
+  assert.equal(first.chargedAmount, '4')
+
+  const reused = await createManualReportAnalysis({
+    userId: premium.id,
+    assetType: AssetReportAssetType.STOCK,
+    ticker: 'PETR4',
+    originalFileName: 'arquivo-curto.txt',
+    contentType: 'text/plain',
+    fileBase64: Buffer.from('curto', 'utf8').toString('base64'),
+  }, runtime)
+
+  assert.equal(reused.outcome, 'REUSED')
+  assert.equal(reused.chargedAmount, '2.5')
+  assert.equal(generateCalls, 1)
+
+  const premiumBalance = await getCreditBalance(premium.id)
+  assert.equal(new Prisma.Decimal(premiumBalance.balance).toFixed(2), '5.50')
+})
+
+test('reports-on-demand.spec: virada de mês invalida cache mensal da modalidade RI', async () => {
+  const author = await createTestUser({ name: 'RI Month Author', plan: PlanType.FREE })
+  const other = await createTestUser({ name: 'RI Month Other', plan: PlanType.FREE })
+  await seedCredits(author.id, 8, 'ri-month-author')
+  await seedCredits(other.id, 8, 'ri-month-other')
+
+  let generateCalls = 0
+  const runtime = {
+    generateAnalysis: async () => {
+      generateCalls += 1
+      return '• ri month 1\n• ri month 2\n• ri month 3\n• ri month 4\n• ri month 5'
+    },
+  }
+
+  const april = await createManualReportAnalysis({
+    userId: author.id,
+    assetType: AssetReportAssetType.STOCK,
+    ticker: 'VALE3',
+    originalFileName: 'vale3-ri-apr.txt',
+    contentType: 'text/plain',
+    fileBase64: Buffer.from(
+      'Relatorio de investidores da VALE3 com visao de producao, custos, disciplina de capital e riscos para os proximos trimestres.',
+      'utf8',
+    ).toString('base64'),
+  }, {
+    ...runtime,
+    now: () => new Date('2026-04-30T22:30:00.000Z'),
+  })
+
+  assert.equal(april.outcome, 'GENERATED')
+
+  const may = await createManualReportAnalysis({
+    userId: other.id,
+    assetType: AssetReportAssetType.STOCK,
+    ticker: 'VALE3',
+    originalFileName: 'vale3-ri-may.txt',
+    contentType: 'text/plain',
+    fileBase64: Buffer.from(
+      'Relatorio de investidores da VALE3 com atualizacao operacional, investimentos e risco de ciclo de commodities para o novo mes.',
+      'utf8',
+    ).toString('base64'),
+  }, {
+    ...runtime,
+    now: () => new Date('2026-05-01T00:10:00.000Z'),
+  })
+
+  assert.equal(may.outcome, 'GENERATED')
+  assert.equal(generateCalls, 2)
 })

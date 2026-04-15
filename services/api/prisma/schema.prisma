@@ -62,6 +62,11 @@ enum ReportAnalysisRequestMode {
   MANUAL_UPLOAD
 }
 
+enum ReportMode {
+  BRAPI_TICKER
+  RI_UPLOAD_AI
+}
+
 enum ReportAnalysisJobStatus {
   QUEUED
   SEARCHING_REPORT
@@ -189,6 +194,8 @@ model AssetReportSource {
   id                  String               @id @default(cuid())
   assetType           AssetReportAssetType @map("asset_type")
   ticker              String
+  reportMode          ReportMode           @map("report_mode")
+  monthKey            String               @map("month_key")
   sourceKind          AssetReportSourceKind @map("source_kind")
   sourceUrl           String?              @map("source_url")
   storageKey          String?              @map("storage_key")
@@ -202,6 +209,7 @@ model AssetReportSource {
 
   @@unique([assetType, ticker, documentFingerprint])
   @@index([assetType, ticker, createdAt])
+  @@index([assetType, ticker, reportMode, monthKey])
   @@map("asset_report_sources")
 }
 
@@ -209,6 +217,8 @@ model AssetReportAnalysis {
   id            String                @id @default(cuid())
   assetType     AssetReportAssetType  @map("asset_type")
   ticker        String
+  reportMode    ReportMode            @map("report_mode")
+  monthKey      String                @map("month_key")
   sourceId      String                @map("source_id")
   analysisText  String                @map("analysis_text")
   model         String
@@ -222,6 +232,7 @@ model AssetReportAnalysis {
 
   @@unique([assetType, ticker, sourceId])
   @@index([assetType, ticker, validUntil])
+  @@index([assetType, ticker, reportMode, monthKey, validUntil])
   @@map("asset_report_analyses")
 }
 

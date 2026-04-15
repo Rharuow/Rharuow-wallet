@@ -8,6 +8,7 @@ import {
   CreditLedgerEntryKind,
   PlanType,
   Prisma,
+  ReportMode,
 } from '@prisma/client'
 import { appLogger } from '../../lib/logger'
 import { getObject, putObject } from '../../lib/object-storage'
@@ -27,13 +28,18 @@ import {
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
 
-const REPORT_PRICE_BY_PLAN: Record<PlanType, number> = {
-  FREE: 2.5,
-  PREMIUM: 1.5,
+const REPORT_PRICE_BY_MODE: Record<ReportMode, Record<PlanType, number>> = {
+  BRAPI_TICKER: {
+    FREE: 2.5,
+    PREMIUM: 1.5,
+  },
+  RI_UPLOAD_AI: {
+    FREE: 4.0,
+    PREMIUM: 2.5,
+  },
 }
 
 const REPORT_ACCESS_TTL_DAYS = 30
-const REPORT_ANALYSIS_TTL_DAYS = 30
 const MANUAL_UPLOAD_MAX_BYTES = 5 * 1024 * 1024
 const MANUAL_UPLOAD_MIN_TEXT_LENGTH = 120
 const MANUAL_UPLOAD_CONTEXT_LIMIT = 12_000
@@ -85,6 +91,16 @@ function serviceError(message: string, statusCode: number) {
 
 function normalizeTicker(ticker: string) {
   return ticker.trim().toUpperCase()
+}
+
+function toMonthKey(now: Date) {
+  const year = now.getUTCFullYear()
+  const month = String(now.getUTCMonth() + 1).padStart(2, '0')
+  return `${year}-${month}`
+}
+
+function resolveCurrentMonthValidityEnd(now: Date) {
+  return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1, 0, 0, 0, 0))
 }
 
 function decimalToString(value: Prisma.Decimal | number | string) {
@@ -183,6 +199,101 @@ function normalizeYieldPercent(value: number | null | undefined) {
   return value <= 1 ? value * 100 : value
 }
 
+function toFiniteNumber(value: unknown) {
+  if (typeof value === 'number') {
+    return Number.isFinite(value) ? value : null
+  }
+
+  if (typeof value === 'string') {
+    const normalized = value.replace(/\s+/g, '').replace(',', '.').trim()
+    const parsed = Number(normalized)
+    return Number.isFinite(parsed) ? parsed : null
+  }
+
+  return null
+}
+
+function findFirstNumberByKeys(source: unknown, keys: string[]) {
+  const pending: unknown[] = [source]
+  const visited = new Set<unknown>()
+  const keySet = new Set(keys.map((key) => key.toLowerCase()))
+
+  while (pending.length > 0) {
+    const current = pending.shift()
+    if (current == null || typeof current !== 'object') {
+      continue
+    }
+
+    if (visited.has(current)) {
+      continue
+    }
+
+    visited.add(current)
+
+    if (Array.isArray(current)) {
+      for (const item of current) {
+        pending.push(item)
+      }
+      continue
+    }
+
+    for (const [entryKey, entryValue] of Object.entries(current)) {
+      if (keySet.has(entryKey.toLowerCase())) {
+        const parsed = toFiniteNumber(entryValue)
+        if (parsed != null) {
+          return parsed
+        }
+      }
+
+      if (entryValue != null && typeof entryValue === 'object') {
+        pending.push(entryValue)
+      }
+    }
+  }
+
+  return null
+}
+
+function resolveStockBookValueForGraham(snapshot: ReturnType<typeof buildStockSnapshot>) {
+  const fromBookValue = snapshot.defaultKeyStatistics.bookValue
+  if (fromBookValue != null && fromBookValue > 0) {
+    return fromBookValue
+  }
+
+  const price = snapshot.regularMarketPrice
+  const priceToBook = snapshot.defaultKeyStatistics.priceToBook
+  if (
+    price != null && price > 0 &&
+    priceToBook != null && priceToBook > 0
+  ) {
+    return price / priceToBook
+  }
+
+  return null
+}
+
+function resolveStockBazinInputs(snapshot: ReturnType<typeof buildStockSnapshot>) {
+  const inferredDividendYield = normalizeYieldPercent(
+    snapshot.summaryDetail.dividendYield ??
+    snapshot.defaultKeyStatistics.trailingAnnualDividendYield,
+  )
+
+  const inferredAnnualDividend =
+    snapshot.summaryDetail.dividendRate ??
+    snapshot.defaultKeyStatistics.trailingAnnualDividendRate ??
+    (
+      snapshot.summaryDetail.lastDividendValue != null &&
+      snapshot.summaryDetail.lastDividendValue > 0
+        ? snapshot.summaryDetail.lastDividendValue * 4
+        : null
+    )
+
+  return {
+    dividendYieldPercent: inferredDividendYield,
+    annualDividendPerShare: inferredAnnualDividend,
+  }
+}
+
 function describeFairPriceGap(fairPrice: number, currentPrice: number) {
   const relativeDelta = ((fairPrice / currentPrice) - 1) * 100
 
@@ -200,7 +311,7 @@ function describeFairPriceGap(fairPrice: number, currentPrice: number) {
 function buildStockGrahamBullet(snapshot: ReturnType<typeof buildStockSnapshot>) {
   const currentPrice = snapshot.regularMarketPrice
   const earningsPerShare = snapshot.earningsPerShare
-  const bookValue = snapshot.defaultKeyStatistics.bookValue
+  const bookValue = resolveStockBookValueForGraham(snapshot)
 
   if (
     currentPrice == null || currentPrice <= 0 ||
@@ -257,12 +368,13 @@ async function defaultBuildValuationAppendix(input: {
     }
 
     const snapshot = buildStockSnapshot(stock)
+    const bazin = resolveStockBazinInputs(snapshot)
     return [
       buildStockGrahamBullet(snapshot),
       buildBazinBullet({
         currentPrice: snapshot.regularMarketPrice,
-        dividendYieldPercent: snapshot.summaryDetail.dividendYield,
-        annualDividendPerShare: snapshot.summaryDetail.dividendRate,
+        dividendYieldPercent: bazin.dividendYieldPercent,
+        annualDividendPerShare: bazin.annualDividendPerShare,
         assetLabel: 'ação',
       }),
     ]
@@ -620,43 +732,19 @@ async function defaultResolveWebSearchSource(input: {
 async function defaultResolveAutoSource(input: {
   assetType: AssetReportAssetType
   ticker: string
-}, resolveWebSearchSource?: ReportRuntime['resolveWebSearchSource']): Promise<ResolvedReportSource | null> {
+}): Promise<ResolvedReportSource | null> {
   const ticker = normalizeTicker(input.ticker)
-  const webSearchResolver = resolveWebSearchSource ?? defaultResolveWebSearchSource
-  const resolveLocalSource = async () => (
+  const localSource = await (
     input.assetType === AssetReportAssetType.STOCK
       ? resolveStockAutoSource(ticker)
       : resolveFiiAutoSource(ticker)
   )
 
-  const officialSource = await webSearchResolver({
-    assetType: input.assetType,
-    ticker,
-  })
-
-  if (officialSource) {
-    const localSource = await resolveLocalSource()
-    const mergedSource = localSource
-      ? mergeResolvedReportSourceWithStructuredFallback(officialSource, localSource)
-      : officialSource
-
-    logReportSourceDebug('source-selected', {
-      assetType: input.assetType,
-      ticker,
-      selected: localSource ? 'OFFICIAL_IR_WEB_SEARCH_WITH_STRUCTURED_FALLBACK' : 'OFFICIAL_IR_WEB_SEARCH',
-      sourceUrl: officialSource.sourceUrl ?? null,
-      supplementalSourceUrl: localSource?.sourceUrl ?? null,
-    })
-    return mergedSource
-  }
-
-  const localSource = await resolveLocalSource()
-
   if (localSource) {
     logReportSourceDebug('source-selected', {
       assetType: input.assetType,
       ticker,
-      selected: input.assetType === AssetReportAssetType.STOCK ? 'BRAPI_FALLBACK' : 'FUNDAMENTUS_FALLBACK',
+      selected: input.assetType === AssetReportAssetType.STOCK ? 'BRAPI_PRIMARY' : 'FUNDAMENTUS_PRIMARY',
       sourceUrl: localSource.sourceUrl ?? null,
     })
     return localSource
@@ -905,11 +993,47 @@ async function validateManualReportBelongsToAsset(input: {
 }
 
 function buildStockSnapshot(stock: StockDetail) {
+  const summaryDetail = stock.summaryDetail ?? null
+  const keyStats = stock.defaultKeyStatistics ?? null
+  const financialData = stock.financialData ?? null
+  const historyRoot = {
+    balanceSheetHistory: stock.balanceSheetHistory ?? null,
+    incomeStatementHistory: stock.incomeStatementHistory ?? null,
+    cashflowHistory: stock.cashflowHistory ?? null,
+  }
+
+  const payments = extractDividendPaymentsFromStock(stock)
+  const regularMarketPrice = stock.regularMarketPrice ?? null
+  const latestDividendValue =
+    summaryDetail?.lastDividendValue ??
+    keyStats?.lastDividendValue ??
+    payments[0]?.value ??
+    null
+
+  const dividendYieldTtm = normalizeYieldPercent(
+    summaryDetail?.dividendYield ?? keyStats?.trailingAnnualDividendYield,
+  )
+
+  const annualDividendPerShare =
+    summaryDetail?.dividendRate ??
+    keyStats?.trailingAnnualDividendRate ??
+    (latestDividendValue != null && latestDividendValue > 0 ? latestDividendValue * 4 : null)
+
+  const lastDividendYield =
+    latestDividendValue != null && latestDividendValue > 0 &&
+    regularMarketPrice != null && regularMarketPrice > 0
+      ? (latestDividendValue / regularMarketPrice) * 100
+      : null
+
+  const dividendsIn2026 = payments
+    .filter((payment) => payment.date?.startsWith('2026-'))
+    .reduce((total, payment) => total + payment.value, 0)
+
   return {
     symbol: stock.symbol?.toUpperCase() ?? null,
     shortName: stock.shortName ?? null,
     longName: stock.longName ?? null,
-    regularMarketPrice: stock.regularMarketPrice ?? null,
+    regularMarketPrice,
     regularMarketChangePercent: stock.regularMarketChangePercent ?? null,
     marketCap: stock.marketCap ?? null,
     priceEarnings: stock.priceEarnings ?? null,
@@ -921,40 +1045,181 @@ function buildStockSnapshot(stock: StockDetail) {
       website: stock.summaryProfile?.website ?? null,
     },
     summaryDetail: {
-      dividendRate: stock.summaryDetail?.dividendRate ?? null,
-      dividendYield: stock.summaryDetail?.dividendYield ?? null,
-      lastDividendValue: stock.summaryDetail?.lastDividendValue ?? null,
+      dividendRate: summaryDetail?.dividendRate ?? null,
+      dividendYield: summaryDetail?.dividendYield ?? null,
+      lastDividendValue: summaryDetail?.lastDividendValue ?? null,
+      exDividendDate: summaryDetail?.exDividendDate ?? null,
+      dividendDate: summaryDetail?.dividendDate ?? null,
     },
-    earningsPerShare: stock.earningsPerShare ?? stock.defaultKeyStatistics?.trailingEps ?? null,
+    earningsPerShare: stock.earningsPerShare ?? keyStats?.trailingEps ?? null,
     financialData: {
-      totalRevenue: stock.financialData?.totalRevenue ?? null,
-      ebitda: stock.financialData?.ebitda ?? null,
-      grossMargins: stock.financialData?.grossMargins ?? null,
-      profitMargins: stock.financialData?.profitMargins ?? null,
-      revenueGrowth: stock.financialData?.revenueGrowth ?? null,
-      earningsGrowth: stock.financialData?.earningsGrowth ?? null,
-      returnOnEquity: stock.financialData?.returnOnEquity ?? null,
-      returnOnAssets: stock.financialData?.returnOnAssets ?? null,
-      totalDebt: stock.financialData?.totalDebt ?? null,
-      totalCash: stock.financialData?.totalCash ?? null,
-      currentRatio: stock.financialData?.currentRatio ?? null,
-      quickRatio: stock.financialData?.quickRatio ?? null,
-      debtToEquity: stock.financialData?.debtToEquity ?? null,
-      freeCashflow: stock.financialData?.freeCashflow ?? null,
-      operatingCashflow: stock.financialData?.operatingCashflow ?? null,
+      totalRevenue: financialData?.totalRevenue ?? null,
+      ebitda: financialData?.ebitda ?? null,
+      grossMargins: financialData?.grossMargins ?? null,
+      operatingMargins: financialData?.operatingMargins ?? null,
+      profitMargins: financialData?.profitMargins ?? null,
+      revenueGrowth: financialData?.revenueGrowth ?? null,
+      earningsGrowth: financialData?.earningsGrowth ?? null,
+      returnOnEquity: financialData?.returnOnEquity ?? null,
+      returnOnAssets: financialData?.returnOnAssets ?? null,
+      totalDebt: financialData?.totalDebt ?? null,
+      totalCash: financialData?.totalCash ?? null,
+      currentRatio: financialData?.currentRatio ?? null,
+      quickRatio: financialData?.quickRatio ?? null,
+      debtToEquity: financialData?.debtToEquity ?? null,
+      freeCashflow: financialData?.freeCashflow ?? null,
+      operatingCashflow: financialData?.operatingCashflow ?? null,
     },
     defaultKeyStatistics: {
-      beta: stock.defaultKeyStatistics?.beta ?? null,
-      bookValue: stock.defaultKeyStatistics?.bookValue ?? null,
-      pegRatio: stock.defaultKeyStatistics?.pegRatio ?? null,
-      priceToBook: stock.defaultKeyStatistics?.priceToBook ?? null,
-      enterpriseToEbitda: stock.defaultKeyStatistics?.enterpriseToEbitda ?? null,
-      enterpriseToRevenue: stock.defaultKeyStatistics?.enterpriseToRevenue ?? null,
+      beta: keyStats?.beta ?? null,
+      bookValue: keyStats?.bookValue ?? null,
+      pegRatio: keyStats?.pegRatio ?? null,
+      priceToBook: keyStats?.priceToBook ?? null,
+      enterpriseToEbitda: keyStats?.enterpriseToEbitda ?? null,
+      enterpriseToRevenue: keyStats?.enterpriseToRevenue ?? null,
+      trailingAnnualDividendRate: keyStats?.trailingAnnualDividendRate ?? null,
+      trailingAnnualDividendYield: keyStats?.trailingAnnualDividendYield ?? null,
+      lastDividendValue: keyStats?.lastDividendValue ?? null,
+    },
+    financialStatements: {
+      totalAssets: findFirstNumberByKeys(historyRoot.balanceSheetHistory, ['totalAssets']),
+      totalLiabilities: findFirstNumberByKeys(historyRoot.balanceSheetHistory, ['totalLiab', 'totalLiabilities']),
+      shareholdersEquity: findFirstNumberByKeys(historyRoot.balanceSheetHistory, ['totalStockholderEquity', 'stockholdersEquity']),
+      netIncome: findFirstNumberByKeys(historyRoot.incomeStatementHistory, ['netIncome', 'netIncomeApplicableToCommonShares']),
+      revenue: findFirstNumberByKeys(historyRoot.incomeStatementHistory, ['totalRevenue']),
+    },
+    dividendHistory: {
+      lastDividendValue: latestDividendValue,
+      lastDividendYield,
+      dividendYieldTtm,
+      annualDividendPerShare,
+      dividendsIn2026: dividendsIn2026 > 0 ? dividendsIn2026 : null,
+      recentPayments: payments,
     },
   }
 }
 
+function formatSnapshotDate(value: string | null | undefined) {
+  if (!value) {
+    return '—'
+  }
+
+  const parsed = new Date(value)
+  if (Number.isNaN(parsed.getTime())) {
+    return value
+  }
+
+  return parsed.toLocaleDateString('pt-BR', {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  })
+}
+
+function extractDividendPaymentsFromStock(stock: StockDetail) {
+  const pending: unknown[] = [stock]
+  const visited = new Set<unknown>()
+  const payments: Array<{ date: string | null; value: number }> = []
+
+  while (pending.length > 0) {
+    const current = pending.shift()
+    if (current == null || typeof current !== 'object') {
+      continue
+    }
+
+    if (visited.has(current)) {
+      continue
+    }
+
+    visited.add(current)
+
+    if (Array.isArray(current)) {
+      for (const entry of current) {
+        if (entry != null && typeof entry === 'object' && !Array.isArray(entry)) {
+          const maybeDate = findFirstStringByKeys(entry, ['paymentDate', 'date', 'dividendDate', 'exDividendDate'])
+          const maybeValue = findFirstNumberByKeys(entry, ['cashAmount', 'dividend', 'value', 'amount'])
+          if (maybeValue != null && maybeValue > 0) {
+            payments.push({ date: maybeDate, value: maybeValue })
+          }
+        }
+
+        if (entry != null && typeof entry === 'object') {
+          pending.push(entry)
+        }
+      }
+      continue
+    }
+
+    for (const value of Object.values(current)) {
+      if (value != null && typeof value === 'object') {
+        pending.push(value)
+      }
+    }
+  }
+
+  const deduped = new Map<string, { date: string | null; value: number }>()
+  for (const payment of payments) {
+    const key = `${payment.date ?? 'na'}:${payment.value.toFixed(6)}`
+    if (!deduped.has(key)) {
+      deduped.set(key, payment)
+    }
+  }
+
+  return Array.from(deduped.values())
+    .sort((left, right) => {
+      const leftDate = left.date ? Date.parse(left.date) : Number.NEGATIVE_INFINITY
+      const rightDate = right.date ? Date.parse(right.date) : Number.NEGATIVE_INFINITY
+      return rightDate - leftDate
+    })
+    .slice(0, 8)
+}
+
+function findFirstStringByKeys(source: unknown, keys: string[]) {
+  const pending: unknown[] = [source]
+  const visited = new Set<unknown>()
+  const keySet = new Set(keys.map((key) => key.toLowerCase()))
+
+  while (pending.length > 0) {
+    const current = pending.shift()
+    if (current == null || typeof current !== 'object') {
+      continue
+    }
+
+    if (visited.has(current)) {
+      continue
+    }
+
+    visited.add(current)
+
+    if (Array.isArray(current)) {
+      for (const item of current) {
+        pending.push(item)
+      }
+      continue
+    }
+
+    for (const [entryKey, entryValue] of Object.entries(current)) {
+      if (keySet.has(entryKey.toLowerCase()) && typeof entryValue === 'string' && entryValue.trim()) {
+        return entryValue
+      }
+
+      if (entryValue != null && typeof entryValue === 'object') {
+        pending.push(entryValue)
+      }
+    }
+  }
+
+  return null
+}
+
 function buildStockPromptContext(snapshot: ReturnType<typeof buildStockSnapshot>) {
+  const dividendPayments = snapshot.dividendHistory.recentPayments.length > 0
+    ? snapshot.dividendHistory.recentPayments
+        .slice(0, 5)
+        .map((payment) => `  - ${formatSnapshotDate(payment.date)}: ${formatCurrency(payment.value)}`)
+        .join('\n')
+    : '  - —'
+
   return `Você é um analista buy and hold do mercado brasileiro.
 
 Analise o ativo ${snapshot.symbol ?? '—'} (${snapshot.longName ?? snapshot.shortName ?? '—'}) a partir deste documento-base automático derivado de dados fundamentalistas confiáveis.
@@ -981,6 +1246,27 @@ Documento-base:
 - Liquidez corrente: ${formatRatio(snapshot.financialData.currentRatio)}
 - Setor: ${snapshot.summaryProfile.sector ?? '—'}
 - Indústria: ${snapshot.summaryProfile.industry ?? '—'}
+
+Indicadores adicionais:
+- Margem EBIT: ${snapshot.financialData.operatingMargins != null ? `${(snapshot.financialData.operatingMargins * 100).toFixed(2)}%` : '—'}
+- Liquidez seca: ${formatRatio(snapshot.financialData.quickRatio)}
+- Crescimento de receita (5 anos): ${snapshot.financialData.revenueGrowth != null ? `${(snapshot.financialData.revenueGrowth * 100).toFixed(2)}%` : '—'}
+- Crescimento de lucro (5 anos): ${snapshot.financialData.earningsGrowth != null ? `${(snapshot.financialData.earningsGrowth * 100).toFixed(2)}%` : '—'}
+
+Demonstrações financeiras (último snapshot disponível):
+- Receita líquida: ${formatCurrency(snapshot.financialStatements.revenue ?? snapshot.financialData.totalRevenue)}
+- Lucro líquido: ${formatCurrency(snapshot.financialStatements.netIncome)}
+- Ativos totais: ${formatCurrency(snapshot.financialStatements.totalAssets)}
+- Passivos totais: ${formatCurrency(snapshot.financialStatements.totalLiabilities)}
+- Patrimônio líquido: ${formatCurrency(snapshot.financialStatements.shareholdersEquity)}
+
+Histórico de dividendos:
+- Último dividendo: ${formatCurrency(snapshot.dividendHistory.lastDividendValue)}
+- DY últ. dividendo: ${formatPercent(snapshot.dividendHistory.lastDividendYield)}
+- Dividend Yield TTM: ${formatPercent(snapshot.dividendHistory.dividendYieldTtm)}
+- Dividendos 2026: ${formatCurrency(snapshot.dividendHistory.dividendsIn2026)}
+- Histórico de pagamentos (mais recentes):
+${dividendPayments}
 
 Responda em português do Brasil com exatamente 5 bullets, cada um começando com "•".
 Cubra valuation, qualidade do negócio, riscos financeiros, leitura do momento e conclusão prática.`
@@ -1027,14 +1313,14 @@ Responda em português do Brasil com exatamente 5 bullets, cada um começando co
 Cubra renda, valuation, qualidade do portfólio, riscos e conclusão prática.`
 }
 
-async function getUserReportPricing(userId: string) {
+async function getUserReportPricing(userId: string, reportMode: ReportMode) {
   const user = await prisma.user.findUniqueOrThrow({
     where: { id: userId },
     select: { plan: { select: { name: true } } },
   })
 
   const plan = user.plan?.name ?? PlanType.FREE
-  const amount = REPORT_PRICE_BY_PLAN[plan]
+  const amount = REPORT_PRICE_BY_MODE[reportMode][plan]
   return { plan, amount }
 }
 
@@ -1056,6 +1342,7 @@ async function debitCreditsAndGrantAccess(input: {
   description: string
   metadata?: JsonValue
   accessTtlDays?: number
+  accessExpiresAt?: Date
   now: Date
 }) {
   return prisma.$transaction(async (tx) => {
@@ -1084,7 +1371,7 @@ async function debitCreditsAndGrantAccess(input: {
     })
 
     const ttlDays = input.accessTtlDays ?? REPORT_ACCESS_TTL_DAYS
-    const expiresAt = new Date(input.now.getTime() + ttlDays * 24 * 60 * 60 * 1000)
+    const expiresAt = input.accessExpiresAt ?? new Date(input.now.getTime() + ttlDays * 24 * 60 * 60 * 1000)
 
     const access = await tx.userAssetReportAccess.upsert({
       where: {
@@ -1114,6 +1401,9 @@ async function createAnalysisFromResolvedSource(input: {
   userId: string
   assetType: AssetReportAssetType
   ticker: string
+  reportMode: ReportMode
+  monthKey: string
+  validUntil: Date
   amount: number
   plan: PlanType
   now: Date
@@ -1124,6 +1414,8 @@ async function createAnalysisFromResolvedSource(input: {
   const source = await upsertAssetReportSource({
     assetType: input.assetType,
     ticker: input.ticker,
+    reportMode: input.reportMode,
+    monthKey: input.monthKey,
     sourceKind: input.resolvedSource.sourceKind,
     sourceUrl: input.resolvedSource.sourceUrl,
     storageKey: input.resolvedSource.storageKey,
@@ -1131,38 +1423,6 @@ async function createAnalysisFromResolvedSource(input: {
     documentFingerprint: input.resolvedSource.documentFingerprint,
     metadata: input.resolvedSource.metadata,
   })
-
-  const reusable = await findReusableAssetReportAnalysis({
-    assetType: input.assetType,
-    ticker: input.ticker,
-    documentFingerprint: input.resolvedSource.documentFingerprint,
-    now: input.now,
-  })
-
-  if (reusable) {
-    const charged = await debitCreditsAndGrantAccess({
-      userId: input.userId,
-      analysisId: reusable.id,
-      amount: input.amount,
-      description: `Desbloqueio de análise reaproveitada de ${input.ticker}`,
-      metadata: {
-        assetType: input.assetType,
-        ticker: input.ticker,
-        reuse: true,
-        sourceKind: input.resolvedSource.sourceKind,
-      },
-      now: input.now,
-    })
-
-    return {
-      outcome: 'REUSED' as const,
-      chargedAmount: decimalToString(input.amount),
-      plan: input.plan,
-      balance: charged.balance,
-      access: charged.access,
-      analysis: reusable,
-    }
-  }
 
   const baseAnalysisText = await input.generateAnalysis({
     assetType: input.assetType,
@@ -1179,11 +1439,15 @@ async function createAnalysisFromResolvedSource(input: {
   const analysis = await upsertAssetReportAnalysis({
     assetType: input.assetType,
     ticker: input.ticker,
+    reportMode: input.reportMode,
+    monthKey: input.monthKey,
     sourceId: source.id,
     analysisText,
     model: process.env.NODE_ENV === 'test' ? 'gpt-4o-mini-test' : 'gpt-4o-mini',
-    validUntil: new Date(input.now.getTime() + REPORT_ANALYSIS_TTL_DAYS * 24 * 60 * 60 * 1000),
+    validUntil: input.validUntil,
     metadata: {
+      reportMode: input.reportMode,
+      monthKey: input.monthKey,
       sourceKind: input.resolvedSource.sourceKind,
       autoFound: input.resolvedSource.sourceKind === AssetReportSourceKind.AUTO_FOUND,
       manualUpload: input.resolvedSource.sourceKind === AssetReportSourceKind.MANUAL_UPLOAD,
@@ -1198,9 +1462,12 @@ async function createAnalysisFromResolvedSource(input: {
     metadata: {
       assetType: input.assetType,
       ticker: input.ticker,
+      reportMode: input.reportMode,
+      monthKey: input.monthKey,
       reuse: false,
       sourceKind: input.resolvedSource.sourceKind,
     },
+    accessExpiresAt: input.validUntil,
     now: input.now,
   })
 
@@ -1214,6 +1481,55 @@ async function createAnalysisFromResolvedSource(input: {
   }
 }
 
+async function chargeAndGrantFromReusableAnalysis(input: {
+  userId: string
+  assetType: AssetReportAssetType
+  ticker: string
+  reportMode: ReportMode
+  monthKey: string
+  amount: number
+  plan: PlanType
+  now: Date
+}) {
+  const reusable = await findReusableAssetReportAnalysis({
+    assetType: input.assetType,
+    ticker: input.ticker,
+    reportMode: input.reportMode,
+    monthKey: input.monthKey,
+    now: input.now,
+  })
+
+  if (!reusable) {
+    return null
+  }
+
+  const charged = await debitCreditsAndGrantAccess({
+    userId: input.userId,
+    analysisId: reusable.id,
+    amount: input.amount,
+    description: `Desbloqueio de análise reaproveitada de ${input.ticker}`,
+    metadata: {
+      assetType: input.assetType,
+      ticker: input.ticker,
+      reportMode: input.reportMode,
+      monthKey: input.monthKey,
+      reuse: true,
+      sourceKind: reusable.source.sourceKind,
+    },
+    accessExpiresAt: reusable.validUntil,
+    now: input.now,
+  })
+
+  return {
+    outcome: 'REUSED' as const,
+    chargedAmount: decimalToString(input.amount),
+    plan: input.plan,
+    balance: charged.balance,
+    access: charged.access,
+    analysis: reusable,
+  }
+}
+
 export async function createOnDemandReportAnalysis(
   input: {
     userId: string
@@ -1224,16 +1540,22 @@ export async function createOnDemandReportAnalysis(
 ) {
   const now = runtime.now?.() ?? new Date()
   const ticker = normalizeTicker(input.ticker)
-  const { amount, plan } = await getUserReportPricing(input.userId)
+  const reportMode = ReportMode.BRAPI_TICKER
+  const monthKey = toMonthKey(now)
+  const validUntil = resolveCurrentMonthValidityEnd(now)
+  const { amount, plan } = await getUserReportPricing(input.userId, reportMode)
 
   const activeAccess = await findActiveAssetReportAccess({
     userId: input.userId,
     assetType: input.assetType,
     ticker,
+    reportMode,
+    monthKey,
     now,
   })
 
   if (activeAccess) {
+    appLogger.info('report-cache-active-access', { userId: input.userId, ticker, reportMode, monthKey })
     const balance = await getCreditBalance(input.userId)
     return {
       outcome: 'ACTIVE_ACCESS' as const,
@@ -1245,10 +1567,27 @@ export async function createOnDemandReportAnalysis(
     }
   }
 
+  const reusable = await chargeAndGrantFromReusableAnalysis({
+    userId: input.userId,
+    assetType: input.assetType,
+    ticker,
+    reportMode,
+    monthKey,
+    amount,
+    plan,
+    now,
+  })
+
+  if (reusable) {
+    appLogger.info('report-cache-hit', { userId: input.userId, ticker, reportMode, monthKey })
+    return reusable
+  }
+
+  appLogger.info('report-cache-miss', { userId: input.userId, ticker, reportMode, monthKey })
   const resolveAutoSource = runtime.resolveAutoSource ?? ((sourceInput: {
     assetType: AssetReportAssetType
     ticker: string
-  }) => defaultResolveAutoSource(sourceInput, runtime.resolveWebSearchSource))
+  }) => defaultResolveAutoSource(sourceInput))
   const resolvedSource = await resolveAutoSource({
     assetType: input.assetType,
     ticker,
@@ -1263,6 +1602,9 @@ export async function createOnDemandReportAnalysis(
     userId: input.userId,
     assetType: input.assetType,
     ticker,
+    reportMode,
+    monthKey,
+    validUntil,
     amount,
     plan,
     now,
@@ -1286,16 +1628,22 @@ export async function createManualReportAnalysis(
 ) {
   const now = runtime.now?.() ?? new Date()
   const ticker = normalizeTicker(input.ticker)
-  const { amount, plan } = await getUserReportPricing(input.userId)
+  const reportMode = ReportMode.RI_UPLOAD_AI
+  const monthKey = toMonthKey(now)
+  const validUntil = resolveCurrentMonthValidityEnd(now)
+  const { amount, plan } = await getUserReportPricing(input.userId, reportMode)
 
   const activeAccess = await findActiveAssetReportAccess({
     userId: input.userId,
     assetType: input.assetType,
     ticker,
+    reportMode,
+    monthKey,
     now,
   })
 
   if (activeAccess) {
+    appLogger.info('report-cache-active-access', { userId: input.userId, ticker, reportMode, monthKey })
     const balance = await getCreditBalance(input.userId)
     return {
       outcome: 'ACTIVE_ACCESS' as const,
@@ -1307,6 +1655,23 @@ export async function createManualReportAnalysis(
     }
   }
 
+  const reusable = await chargeAndGrantFromReusableAnalysis({
+    userId: input.userId,
+    assetType: input.assetType,
+    ticker,
+    reportMode,
+    monthKey,
+    amount,
+    plan,
+    now,
+  })
+
+  if (reusable) {
+    appLogger.info('report-cache-hit', { userId: input.userId, ticker, reportMode, monthKey })
+    return reusable
+  }
+
+  appLogger.info('report-cache-miss', { userId: input.userId, ticker, reportMode, monthKey })
   const manualUpload = await resolveManualUploadBuffer({
     fileBase64: input.fileBase64,
     storageKey: input.storageKey,
@@ -1360,6 +1725,9 @@ export async function createManualReportAnalysis(
     userId: input.userId,
     assetType: input.assetType,
     ticker,
+    reportMode,
+    monthKey,
+    validUntil,
     amount,
     plan,
     now,
