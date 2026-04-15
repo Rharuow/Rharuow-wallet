@@ -1,4 +1,9 @@
-import { AssetReportAssetType, AssetReportSourceKind, Prisma } from '@prisma/client'
+import {
+  AssetReportAssetType,
+  AssetReportSourceKind,
+  Prisma,
+  ReportMode,
+} from '@prisma/client'
 import { prisma } from '../../lib/prisma'
 
 type JsonValue = Prisma.InputJsonValue
@@ -12,6 +17,8 @@ function normalizeTicker(ticker: string) {
 export async function upsertAssetReportSource(input: {
   assetType: AssetReportAssetType
   ticker: string
+  reportMode: ReportMode
+  monthKey: string
   sourceKind: AssetReportSourceKind
   documentFingerprint: string
   sourceUrl?: string | null
@@ -30,6 +37,8 @@ export async function upsertAssetReportSource(input: {
       },
     },
     update: {
+      reportMode: input.reportMode,
+      monthKey: input.monthKey,
       sourceKind: input.sourceKind,
       sourceUrl: input.sourceUrl,
       storageKey: input.storageKey,
@@ -39,6 +48,8 @@ export async function upsertAssetReportSource(input: {
     create: {
       assetType: input.assetType,
       ticker,
+      reportMode: input.reportMode,
+      monthKey: input.monthKey,
       sourceKind: input.sourceKind,
       sourceUrl: input.sourceUrl,
       storageKey: input.storageKey,
@@ -52,6 +63,8 @@ export async function upsertAssetReportSource(input: {
 export async function upsertAssetReportAnalysis(input: {
   assetType: AssetReportAssetType
   ticker: string
+  reportMode: ReportMode
+  monthKey: string
   sourceId: string
   analysisText: string
   model: string
@@ -69,6 +82,8 @@ export async function upsertAssetReportAnalysis(input: {
       },
     },
     update: {
+      reportMode: input.reportMode,
+      monthKey: input.monthKey,
       analysisText: input.analysisText,
       model: input.model,
       validUntil: input.validUntil,
@@ -77,6 +92,8 @@ export async function upsertAssetReportAnalysis(input: {
     create: {
       assetType: input.assetType,
       ticker,
+      reportMode: input.reportMode,
+      monthKey: input.monthKey,
       sourceId: input.sourceId,
       analysisText: input.analysisText,
       model: input.model,
@@ -92,13 +109,10 @@ export async function upsertAssetReportAnalysis(input: {
 export async function findReusableAssetReportAnalysis(input: {
   assetType: AssetReportAssetType
   ticker: string
-  documentFingerprint?: string
+  reportMode: ReportMode
+  monthKey: string
   now?: Date
 }) {
-  if (!input.documentFingerprint) {
-    return null
-  }
-
   const ticker = normalizeTicker(input.ticker)
   const now = input.now ?? new Date()
 
@@ -106,10 +120,9 @@ export async function findReusableAssetReportAnalysis(input: {
     where: {
       assetType: input.assetType,
       ticker,
+      reportMode: input.reportMode,
+      monthKey: input.monthKey,
       validUntil: { gt: now },
-      ...(input.documentFingerprint
-        ? { source: { documentFingerprint: input.documentFingerprint } }
-        : {}),
     },
     include: {
       source: true,
@@ -158,6 +171,8 @@ export async function findActiveAssetReportAccess(input: {
   userId: string
   assetType: AssetReportAssetType
   ticker: string
+  reportMode: ReportMode
+  monthKey: string
   now?: Date
 }) {
   const ticker = normalizeTicker(input.ticker)
@@ -170,6 +185,8 @@ export async function findActiveAssetReportAccess(input: {
       analysis: {
         assetType: input.assetType,
         ticker,
+        reportMode: input.reportMode,
+        monthKey: input.monthKey,
       },
     },
     include: {

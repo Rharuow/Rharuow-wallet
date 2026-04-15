@@ -93,7 +93,14 @@ export async function fetchBrapiStocks(
 // ----------------------------------------------------------------
 
 const BRAPI_QUOTE_URL = 'https://brapi.dev/api/quote'
-const DETAIL_MODULES = 'summaryProfile,summaryDetail,financialData,defaultKeyStatistics'
+const DETAIL_MODULES = [
+  'summaryProfile',
+  'financialData',
+  'defaultKeyStatistics',
+  'balanceSheetHistory',
+  'incomeStatementHistory',
+  'cashflowHistory',
+].join(',')
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 async function fetchQuote(url: string): Promise<any | null> {
@@ -120,10 +127,33 @@ export async function fetchBrapiStockDetail(ticker: string): Promise<any> {
   const modulesUrl = `${BRAPI_QUOTE_URL}/${encoded}?modules=${DETAIL_MODULES}${
     token ? `&token=${token}` : ''
   }`
-  const withModules = await fetchQuote(modulesUrl)
-  if (withModules) return withModules
-
-  // Fallback: cotação básica gratuita (sem módulos)
   const basicUrl = `${BRAPI_QUOTE_URL}/${encoded}${token ? `?token=${token}` : ''}`
-  return fetchQuote(basicUrl)
+  const [withModules, basic] = await Promise.all([
+    fetchQuote(modulesUrl),
+    fetchQuote(basicUrl),
+  ])
+
+  if (!withModules) {
+    return basic
+  }
+
+  if (!basic) {
+    return withModules
+  }
+
+  // Une dados básicos com módulos, preservando campos de cotação/dividendos que
+  // por vezes não vêm no payload de módulos dependendo do plano da BRAPI.
+  return {
+    ...basic,
+    ...withModules,
+    summaryDetail: withModules.summaryDetail ?? basic.summaryDetail ?? null,
+    defaultKeyStatistics: {
+      ...(basic.defaultKeyStatistics ?? {}),
+      ...(withModules.defaultKeyStatistics ?? {}),
+    },
+    financialData: {
+      ...(basic.financialData ?? {}),
+      ...(withModules.financialData ?? {}),
+    },
+  }
 }

@@ -3,7 +3,7 @@ import { getAuthToken } from "@/lib/auth";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001";
 
-export async function GET() {
+export async function GET(_request: NextRequest) {
   const token = await getAuthToken();
   if (!token) {
     return NextResponse.json({ error: "Não autenticado" }, { status: 401 });

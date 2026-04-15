@@ -205,7 +205,7 @@ export function OnDemandReportCard({
   initialAssetType = "STOCK",
   initialTicker = "",
   editable = false,
-  title = "Relatório on-demand",
+  title = "Relatório por ticker",
   subtitle = "",
 }: {
   initialAssetType?: AssetType;
@@ -409,8 +409,8 @@ export function OnDemandReportCard({
       setTicker(((options.payload.ticker as string | undefined) ?? ticker).trim().toUpperCase());
       toast.success(
         options.action === "manual"
-          ? "Upload recebido. Vamos validar e processar o relatório."
-          : "Solicitação recebida. O relatório entrou na fila de processamento."
+          ? "Arquivo recebido. Vamos validar e gerar sua leitura."
+          : "Solicitação recebida. Estamos preparando sua leitura."
       );
     } catch {
       const message = "Não foi possível se conectar ao servidor agora.";
@@ -498,7 +498,7 @@ export function OnDemandReportCard({
 
       <Card.Body className="space-y-4">
         <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-          Cobrança apenas em sucesso final. Se a busca falhar ou o processamento não concluir, nenhum crédito é debitado.
+          Cobrança apenas em sucesso final. Se não conseguirmos concluir, nenhum crédito é debitado.
         </div>
 
         <div className={`grid gap-3 ${editable ? "md:grid-cols-[160px_minmax(0,1fr)_auto]" : "md:grid-cols-[minmax(0,1fr)_auto]"}`}>
@@ -524,12 +524,12 @@ export function OnDemandReportCard({
           <div className="flex items-end">
             <Button onClick={handleAnalyze} disabled={loading}>
               {pendingAction === "auto"
-                ? "Enfileirando…"
+                ? "Iniciando…"
                 : currentJob && !isTerminalJob(currentJob.status)
-                  ? "Criar outro job"
+                  ? "Nova solicitação"
                   : analysisResult
-                    ? "Solicitar nova análise"
-                    : "Criar job de análise"}
+                    ? "Atualizar leitura"
+                    : "Gerar leitura"}
             </Button>
           </div>
         </div>
@@ -538,7 +538,7 @@ export function OnDemandReportCard({
           <div className="space-y-1">
             <p className="text-sm font-semibold text-[var(--foreground)]">Enviar relatório do seu computador</p>
             <p className="text-sm text-slate-500">
-              Se a busca automática não resolver o documento-base, você pode enviar um arquivo manual e acompanhar o processamento separadamente.
+              Se não encontrarmos um material confiável pelo ticker, você pode enviar um arquivo e seguir por esse caminho.
             </p>
           </div>
 
@@ -567,8 +567,8 @@ export function OnDemandReportCard({
                 {pendingAction === "manual"
                   ? "Enviando arquivo…"
                   : currentJob && !isTerminalJob(currentJob.status)
-                    ? "Criar job manual"
-                    : "Criar job com arquivo"}
+                    ? "Nova solicitação com arquivo"
+                    : "Gerar leitura com arquivo"}
               </Button>
             </div>
           </div>
@@ -579,7 +579,7 @@ export function OnDemandReportCard({
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div className="space-y-1">
                 <p className="text-sm font-semibold text-[var(--foreground)]">
-                  Job atual · {currentJob.ticker} · {currentJob.assetType === "FII" ? "FII" : "Ação"}
+                  Solicitação atual · {currentJob.ticker} · {currentJob.assetType === "FII" ? "FII" : "Ação"}
                 </p>
                 <p className="text-xs text-slate-500">
                   {formatRequestMode(currentJob.requestMode)} · criado em {formatDate(currentJob.createdAt)}
@@ -609,7 +609,7 @@ export function OnDemandReportCard({
 
             {currentJob.status !== "COMPLETED" ? (
               <p className="mt-4 text-sm text-slate-500">
-                A leitura do relatório só é liberada quando o job atingir o estado <span className="font-semibold text-[var(--foreground)]">Concluído</span>.
+                A leitura do relatório só é liberada quando o processamento atingir o estado <span className="font-semibold text-[var(--foreground)]">Concluído</span>.
               </p>
             ) : null}
           </div>
@@ -647,7 +647,7 @@ export function OnDemandReportCard({
           <div className="rounded-2xl border border-slate-200 bg-white p-4">
             <div className="flex items-center justify-between gap-3">
               <div>
-                <p className="text-sm font-semibold text-[var(--foreground)]">Jobs recentes</p>
+                <p className="text-sm font-semibold text-[var(--foreground)]">Solicitações recentes</p>
                 <p className="text-sm text-slate-500">Acompanhe o andamento e reabra uma análise já concluída.</p>
               </div>
               {isLoadingHistory ? <span className="text-xs text-slate-400">Atualizando…</span> : null}
@@ -728,7 +728,7 @@ export function OnDemandReportCard({
           </div>
         ) : (
           <p className="text-sm text-slate-500">
-            Crie um job por ticker para localizar o documento-base e acompanhe o status até a conclusão. Se a origem automática falhar, use o upload manual.
+            Gere uma solicitação por ticker para localizar a melhor base e acompanhe o status até a conclusão. Se a origem automática falhar, use o envio de arquivo.
           </p>
         )}
       </Card.Body>

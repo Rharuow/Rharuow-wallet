@@ -28,7 +28,9 @@ test.afterAll(async () => {
   await prisma.$disconnect();
 });
 
-test("uses manual upload fallback, debits once and preserves active access", async ({ browser }) => {
+test("manual upload creates queued requests without immediate debit", async ({ browser }) => {
+  test.setTimeout(120000);
+
   const user = await createTestUser({
     name: "Reports E2E",
     plan: PlanType.FREE,
@@ -39,13 +41,6 @@ test("uses manual upload fallback, debits once and preserves active access", asy
   await page.goto("/dashboard/relatorios");
 
   await page.getByLabel("Ticker").fill("ABCD4");
-  const autoRequest = page.waitForResponse(
-    (response) =>
-      response.url().endsWith("/api/reports/analysis") &&
-      response.request().method() === "POST"
-  );
-  await page.getByRole("button", { name: "Desbloquear análise" }).click();
-  expect((await autoRequest).status()).toBe(404);
 
   await page.getByLabel("Arquivo do relatório").setInputFiles({
     name: "abcd4-manual.txt",
@@ -58,33 +53,25 @@ test("uses manual upload fallback, debits once and preserves active access", asy
 
   const manualRequest = page.waitForResponse(
     (response) =>
-      response.url().endsWith("/api/reports/analysis") &&
+      response.url().includes("/api/reports/") &&
+      ((response.url().includes("/jobs/manual") || response.url().includes("/analysis/manual"))) &&
       response.request().method() === "POST"
   );
-  await page.getByRole("button", { name: "Enviar relatório manual" }).click();
-  expect((await manualRequest).status()).toBe(200);
+  await page.getByRole("button", { name: "Gerar leitura com arquivo", exact: true }).click();
+  expect((await manualRequest).status()).toBe(202);
 
   const chargeCard = page.locator("div.rounded-2xl").filter({ hasText: "Cobrança" }).last();
 
-  await expect(page.getByText("Análise gerada", { exact: true })).toBeVisible();
-  await expect(page.getByText("Origem manual: abcd4-manual.txt")).toBeVisible();
-  await expect(chargeCard.getByText("R$ 2,50", { exact: true })).toBeVisible();
+  await expect(page.getByText("Solicitação atual")).toBeVisible({ timeout: 30000 });
+  await expect(page.getByText("Na fila", { exact: true }).first()).toBeVisible({ timeout: 30000 });
+  await expect(chargeCard.getByText("Somente em sucesso", { exact: true })).toBeVisible();
 
-  const secondManualRequest = page.waitForResponse(
-    (response) =>
-      response.url().endsWith("/api/reports/analysis") &&
-      response.request().method() === "POST"
-  );
-  await page.getByRole("button", { name: "Enviar relatório manual" }).click();
-  expect((await secondManualRequest).status()).toBe(200);
-
-  await expect(page.getByText("Acesso ativo")).toBeVisible();
-  await expect(chargeCard.getByText("R$ 0,00", { exact: true })).toBeVisible();
+  await expect(page.getByText("Solicitações recentes", { exact: true })).toBeVisible();
 
   const debits = await prisma.creditLedgerEntry.findMany({
     where: { userId: user.id, kind: "DEBIT" },
   });
-  expect(debits).toHaveLength(1);
+  expect(debits).toHaveLength(0);
 
   await page.context().close();
 });

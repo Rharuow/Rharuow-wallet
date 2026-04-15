@@ -11,6 +11,49 @@ Guia passo a passo para instalar e registrar os runners de CI/CD.
 
 ---
 
+## 🧭 Arquitetura Consolidada (AWS + CI/CD)
+
+### Topologia atual
+
+1. API (`services/api`) roda em container Docker na EC2.
+2. Nginx na EC2 faz reverse proxy HTTPS para a API interna (`127.0.0.1:8080 -> container:3001`).
+3. Banco em Supabase:
+  - runtime da API via pooler transacional (`DATABASE_URL`);
+  - migração via conexão direta (`DIRECT_URL`).
+4. Redis em Upstash, pagamentos em Stripe, AI em OpenAI, mensagens em Kafka/Confluent.
+
+### Decisões operacionais
+
+1. **Migrações separadas do deploy**:
+  - migração executa no runner `prod-migrations`;
+  - deploy executa no runner `ec2-deploy` (na própria EC2).
+2. **PR não implanta em produção**:
+  - PR dispara checks de gate (`Migrate` e `Release`) sem alterar infra de produção.
+3. **Main implanta de forma encadeada**:
+  - `API Migrate` roda primeiro;
+  - `API Release` roda após sucesso da migração (`workflow_run`).
+
+### Fluxo CI/CD vigente
+
+1. **Pull Request para `main`**:
+  - `api-migrate.yml`: job `Migrate` (validação Prisma segura para PR);
+  - `api-release.yml`: job `Release` (gate, sem deploy).
+2. **Merge/Push em `main`**:
+  - `api-migrate.yml`: job `migrate` roda `prisma migrate deploy`.
+3. **Após migração bem-sucedida na `main`**:
+  - `api-release.yml`: job `deploy_ec2` faz `git pull` + `docker compose up` + healthcheck.
+4. **Rastreabilidade de deploy**:
+  - logs com evento, actor, run id, SHA e timestamp UTC;
+  - histórico persistido em `/opt/rharuowallet/.deploy-history.log`.
+
+### Operação em incidente
+
+1. Falha de health: coletar `docker compose ps` e `docker compose logs`.
+2. Rollback rápido: retornar para `origin/main~1` (ou SHA específico) e recriar containers.
+3. Pós-incidente: voltar checkout para `main`, validar health e registrar causa.
+
+---
+
 ## 1️⃣ Instalar Runner `prod-migrations` (Sua Máquina)
 
 ### Pré-requisitos
@@ -402,4 +445,54 @@ git pull --ff-only origin main
 3. ✅ Fazer commit/push pequeno na `main` para disparar workflows
 4. ✅ Validar que migração + deploy executam em sequência
 5. ✅ Monitorar logs da EC2 para garantir saúde do container
+
+---
+
+## 🔐 Rotação de Segredos (Runbook)
+
+Use esta ordem para evitar indisponibilidade e garantir revogação completa.
+
+### Ordem recomendada
+
+1. Gerar novas credenciais no provedor (Supabase, OpenAI, Stripe, Gmail/Resend, Confluent, Upstash).
+2. Atualizar segredos no GitHub (Settings > Secrets and variables > Actions).
+3. Atualizar arquivo de runtime na EC2 (`/opt/rharuowallet/infra/aws/ec2/.env.api`).
+4. Executar deploy e validar healthcheck.
+5. Revogar/remover credenciais antigas no provedor.
+
+### Segredos para rotacionar
+
+1. Banco (Supabase): `DATABASE_URL` pooler + `DIRECT_URL` direta.
+2. API auth: `JWT_SECRET`.
+3. AI: `OPENAI_API_KEY`.
+4. Pagamentos: `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`.
+5. E-mail: `SMTP_PASS` (ou `RESEND_API_KEY`, se usar Resend).
+6. Kafka (Confluent): `KAFKA_PASSWORD` (e `KAFKA_USERNAME`, se necessário).
+7. Redis (Upstash): `UPSTASH_REDIS_TOKEN`.
+
+### GitHub Secrets usados nos workflows
+
+No repositório, manter atualizados:
+
+1. `PROD_DATABASE_URL_POOLER`
+2. `PROD_DIRECT_URL`
+
+### Validação pós-rotação
+
+```bash
+# Na EC2
+cd /opt/rharuowallet
+docker compose -f infra/aws/ec2/docker-compose.api.yml up --build -d --force-recreate --remove-orphans
+curl -fsS --retry 20 --retry-delay 2 --retry-all-errors http://127.0.0.1:8080/health
+docker compose -f infra/aws/ec2/docker-compose.api.yml logs --tail=200
+```
+
+### Auditoria rápida
+
+Após rotacionar, verifique se não restaram segredos antigos em arquivos versionados.
+
+```bash
+cd /opt/rharuowallet
+git grep -n "JWT_SECRET\|OPENAI_API_KEY\|STRIPE_SECRET_KEY\|SMTP_PASS\|KAFKA_PASSWORD\|UPSTASH_REDIS_TOKEN" || true
+```
 
