@@ -66,7 +66,7 @@ test("manual upload creates queued requests without immediate debit", async ({ b
   await expect(page.getByText("Na fila", { exact: true }).first()).toBeVisible({ timeout: 30000 });
   await expect(chargeCard.getByText("Somente em sucesso", { exact: true })).toBeVisible();
 
-  await expect(page.getByText("Solicitações recentes", { exact: true })).toBeVisible();
+  await expect(page.getByText("Solicitações recentes por modalidade", { exact: true })).toBeVisible();
 
   const debits = await prisma.creditLedgerEntry.findMany({
     where: { userId: user.id, kind: "DEBIT" },
