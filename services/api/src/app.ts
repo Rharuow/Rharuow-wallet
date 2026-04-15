@@ -30,6 +30,7 @@ export async function buildServer() {
   }
 
   const server = Fastify({
+    bodyLimit: 20 * 1024 * 1024,
     logger:
       process.env.NODE_ENV === 'test'
         ? false
@@ -158,6 +159,12 @@ export async function buildServer() {
   )
 
   server.setErrorHandler((error, _request, reply) => {
+    const fastifyError = error as Error & { code?: string; statusCode?: number }
+
+    if (fastifyError.code === 'FST_ERR_CTP_BODY_TOO_LARGE') {
+      return reply.status(413).send({ error: 'REPORT_SOURCE_MANUAL_FILE_TOO_LARGE' })
+    }
+
     if (error instanceof ZodError) {
       return reply.status(400).send({ error: 'VALIDATION_ERROR', details: error.errors })
     }

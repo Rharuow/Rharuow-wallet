@@ -19,6 +19,7 @@ export function FiiAnalysisCard({ papel }: Props) {
       <OnDemandReportCard
         initialAssetType="FII"
         initialTicker={papel}
+        scopeToInitialAsset
         title="Relatório do FII"
         subtitle="Localiza a melhor base disponível para o fundo e libera a leitura quando houver sucesso."
       />

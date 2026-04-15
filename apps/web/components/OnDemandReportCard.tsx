@@ -8,6 +8,21 @@ type AssetType = "STOCK" | "FII";
 
 type RequestMode = "AUTO_WEB" | "MANUAL_UPLOAD";
 
+type ValuationMethod = "GRAHAM" | "BAZIN";
+
+type ValuationInsight = {
+  method: ValuationMethod;
+  title: string;
+  badge: string;
+  formula: string;
+  description: string;
+  fairLabel: string;
+  fairPrice: number | null;
+  currentPrice: number | null;
+  potentialPercent: number | null;
+  potentialLabel: string;
+};
+
 type ReportJobStatus =
   | "QUEUED"
   | "SEARCHING_REPORT"
@@ -70,6 +85,7 @@ const assetTypeOptions = [
   { label: "Ação", value: "STOCK" },
   { label: "FII", value: "FII" },
 ];
+const MANUAL_UPLOAD_MAX_BYTES = 10 * 1024 * 1024;
 
 function formatCurrency(value: string) {
   const parsed = Number(value);
@@ -90,7 +106,99 @@ function formatDate(value: string) {
   });
 }
 
+function parseCurrencyBRL(raw: string | null | undefined): number | null {
+  if (!raw) {
+    return null;
+  }
+
+  const normalized = raw
+    .replace(/R\$/gi, "")
+    .replace(/\s+/g, "")
+    .replace(/\./g, "")
+    .replace(/,/g, ".");
+
+  const value = Number(normalized);
+  return Number.isFinite(value) ? value : null;
+}
+
+function formatPercent(value: number) {
+  return `${value.toFixed(2)}%`;
+}
+
+function potentialLabel(method: ValuationMethod, potentialPercent: number | null) {
+  if (potentialPercent == null) {
+    return "Sem base";
+  }
+
+  if (potentialPercent >= 25) {
+    return method === "GRAHAM" ? "Forte Desconto" : "Muito Abaixo";
+  }
+
+  if (potentialPercent >= 5) {
+    return "Abaixo do justo";
+  }
+
+  if (potentialPercent > -5) {
+    return "Próximo do justo";
+  }
+
+  if (potentialPercent > -25) {
+    return "Acima do justo";
+  }
+
+  return method === "BAZIN" ? "Muito Caro" : "Bem Esticado";
+}
+
+function parseValuationBullets(bullets: string[]) {
+  const insights: ValuationInsight[] = [];
+  const remaining: string[] = [];
+
+  for (const bullet of bullets) {
+    const lower = bullet.toLowerCase();
+    const isGraham = lower.startsWith("fórmula de graham") || lower.startsWith("formula de graham");
+    const isBazin = lower.startsWith("fórmula de bazin") || lower.startsWith("formula de bazin");
+
+    if (!isGraham && !isBazin) {
+      remaining.push(bullet);
+      continue;
+    }
+
+    const method: ValuationMethod = isGraham ? "GRAHAM" : "BAZIN";
+    const fairMatch = bullet.match(/(?:=|é)\s*(R\$\s*[\d.,]+)/i);
+    const currentMatch = bullet.match(/preço atual:\s*(R\$\s*[\d.,]+)/i);
+    const fairPrice = parseCurrencyBRL(fairMatch?.[1]);
+    const currentPrice = parseCurrencyBRL(currentMatch?.[1]);
+    const potentialPercent =
+      fairPrice != null && currentPrice != null && currentPrice > 0
+        ? ((fairPrice - currentPrice) / currentPrice) * 100
+        : null;
+
+    insights.push({
+      method,
+      title: method === "GRAHAM" ? "Fórmula de Graham" : "Método Bazin",
+      badge: method === "GRAHAM" ? "Preço Justo" : "Preço Teto",
+      formula:
+        method === "GRAHAM"
+          ? "√(22,5 × LPA × VPA)"
+          : "(DPA × 100) ÷ 6%",
+      description:
+        method === "GRAHAM"
+          ? "Criada por Benjamin Graham, considera lucratividade e solidez patrimonial"
+          : "Método de Décio Bazin focado em renda passiva com yield mínimo de 6%",
+      fairLabel: method === "GRAHAM" ? "Preço Justo (Graham)" : "Preço Teto (Bazin)",
+      fairPrice,
+      currentPrice,
+      potentialPercent,
+      potentialLabel: potentialLabel(method, potentialPercent),
+    });
+  }
+
+  return { insights, remaining };
+}
+
 function errorMessageForCode(error?: string) {
+  const normalizedError = (error ?? "").trim().toUpperCase();
+
   if (error === "INSUFFICIENT_CREDITS") {
     return "Você não tem créditos suficientes para continuar essa análise.";
   }
@@ -112,7 +220,7 @@ function errorMessageForCode(error?: string) {
   }
 
   if (error === "REPORT_SOURCE_MANUAL_FILE_TOO_LARGE") {
-    return "O arquivo é muito grande. Envie um documento de até 5 MB.";
+    return "O arquivo é muito grande. Envie um documento de até 10 MB.";
   }
 
   if (error === "REPORT_SOURCE_MANUAL_CONTENT_TOO_SHORT") {
@@ -123,7 +231,21 @@ function errorMessageForCode(error?: string) {
     return "A análise está temporariamente indisponível neste ambiente.";
   }
 
-  return error ?? "Não foi possível concluir a análise agora.";
+  if (
+    normalizedError === "PAYLOAD TOO LARGE" ||
+    normalizedError === "PAYLOAD_TOO_LARGE" ||
+    normalizedError === "REQUEST ENTITY TOO LARGE" ||
+    normalizedError === "ENTITY TOO LARGE" ||
+    normalizedError === "413"
+  ) {
+    return "O arquivo enviado ultrapassa o limite de tamanho. Envie um documento menor e tente novamente.";
+  }
+
+  if (normalizedError.includes("PAYLOAD") && normalizedError.includes("LARGE")) {
+    return "O arquivo enviado ultrapassa o limite de tamanho. Envie um documento menor e tente novamente.";
+  }
+
+  return "Não foi possível concluir a análise agora. Tente novamente em instantes.";
 }
 
 function isTerminalJob(status: ReportJobStatus) {
@@ -148,6 +270,32 @@ function statusToneClass(status: ReportJobStatus) {
 
 function formatRequestMode(mode: RequestMode) {
   return mode === "MANUAL_UPLOAD" ? "Upload manual" : "Busca automática";
+}
+
+function normalizeTicker(value: string) {
+  return value.trim().toUpperCase();
+}
+
+function filterJobsByScope(
+  jobs: ReportJob[],
+  options: {
+    scopeToInitialAsset: boolean;
+    initialAssetType: AssetType;
+    initialTicker: string;
+  },
+) {
+  if (!options.scopeToInitialAsset) {
+    return jobs;
+  }
+
+  const scopedTicker = normalizeTicker(options.initialTicker);
+  if (!scopedTicker) {
+    return jobs;
+  }
+
+  return jobs.filter(
+    (job) => job.assetType === options.initialAssetType && normalizeTicker(job.ticker) === scopedTicker,
+  );
 }
 
 function formatSourceLabel(source: ReportAnalysisPayload["analysis"]["source"]) {
@@ -205,12 +353,14 @@ export function OnDemandReportCard({
   initialAssetType = "STOCK",
   initialTicker = "",
   editable = false,
+  scopeToInitialAsset = false,
   title = "Relatório por ticker",
   subtitle = "",
 }: {
   initialAssetType?: AssetType;
   initialTicker?: string;
   editable?: boolean;
+  scopeToInitialAsset?: boolean;
   title?: string;
   subtitle?: string;
 }) {
@@ -229,6 +379,26 @@ export function OnDemandReportCard({
 
   const loading = pendingAction !== null;
 
+  const scopedJobHistory = useMemo(
+    () =>
+      filterJobsByScope(jobHistory, {
+        scopeToInitialAsset,
+        initialAssetType,
+        initialTicker,
+      }),
+    [jobHistory, scopeToInitialAsset, initialAssetType, initialTicker],
+  );
+
+  const autoModeJobs = useMemo(
+    () => scopedJobHistory.filter((job) => job.requestMode === "AUTO_WEB"),
+    [scopedJobHistory],
+  );
+
+  const manualModeJobs = useMemo(
+    () => scopedJobHistory.filter((job) => job.requestMode === "MANUAL_UPLOAD"),
+    [scopedJobHistory],
+  );
+
   const bullets = useMemo(() => {
     if (!analysisResult?.analysis.analysisText) return [];
 
@@ -238,6 +408,10 @@ export function OnDemandReportCard({
       .filter((line) => line.startsWith("•") || line.startsWith("-"))
       .map((line) => line.slice(1).trim());
   }, [analysisResult]);
+
+  const parsedBullets = useMemo(() => parseValuationBullets(bullets), [bullets]);
+  const valuationInsights = parsedBullets.insights;
+  const regularBullets = parsedBullets.remaining;
 
   useEffect(() => {
     let ignore = false;
@@ -259,13 +433,18 @@ export function OnDemandReportCard({
         }
 
         const jobs = data.jobs ?? [];
+        const visibleJobs = filterJobsByScope(jobs, {
+          scopeToInitialAsset,
+          initialAssetType,
+          initialTicker,
+        });
         setJobHistory(jobs);
         setCurrentJob((previous) => {
           if (previous) {
             return jobs.find((job) => job.id === previous.id) ?? previous;
           }
 
-          return jobs.find((job) => !isTerminalJob(job.status)) ?? jobs[0] ?? null;
+          return visibleJobs.find((job) => !isTerminalJob(job.status)) ?? visibleJobs[0] ?? null;
         });
       } finally {
         if (!ignore) {
@@ -279,7 +458,26 @@ export function OnDemandReportCard({
     return () => {
       ignore = true;
     };
-  }, []);
+  }, [scopeToInitialAsset, initialAssetType, initialTicker]);
+
+  useEffect(() => {
+    if (!scopeToInitialAsset) {
+      return;
+    }
+
+    setCurrentJob((previous) => {
+      if (!previous) {
+        return scopedJobHistory.find((job) => !isTerminalJob(job.status)) ?? scopedJobHistory[0] ?? null;
+      }
+
+      const stillVisible = scopedJobHistory.some((job) => job.id === previous.id);
+      if (stillVisible) {
+        return previous;
+      }
+
+      return scopedJobHistory.find((job) => !isTerminalJob(job.status)) ?? scopedJobHistory[0] ?? null;
+    });
+  }, [scopeToInitialAsset, scopedJobHistory]);
 
   useEffect(() => {
     if (!currentJob || isTerminalJob(currentJob.status)) {
@@ -406,7 +604,7 @@ export function OnDemandReportCard({
       completionToastJobIdRef.current = null;
       setCurrentJob(data.job);
       setJobHistory((previous) => mergeJobs(previous, [data.job!]));
-      setTicker(((options.payload.ticker as string | undefined) ?? ticker).trim().toUpperCase());
+      setTicker(normalizeTicker((options.payload.ticker as string | undefined) ?? ticker));
       toast.success(
         options.action === "manual"
           ? "Arquivo recebido. Vamos validar e gerar sua leitura."
@@ -448,7 +646,7 @@ export function OnDemandReportCard({
   }
 
   async function handleAnalyze() {
-    const normalizedTicker = ticker.trim().toUpperCase();
+    const normalizedTicker = normalizeTicker(ticker);
     if (!normalizedTicker) {
       toast.error("Digite um ticker para continuar.");
       return;
@@ -462,7 +660,7 @@ export function OnDemandReportCard({
   }
 
   async function handleManualUpload() {
-    const normalizedTicker = ticker.trim().toUpperCase();
+    const normalizedTicker = normalizeTicker(ticker);
     if (!normalizedTicker) {
       toast.error("Digite um ticker antes de enviar o arquivo.");
       return;
@@ -470,6 +668,13 @@ export function OnDemandReportCard({
 
     if (!manualFile) {
       toast.error("Selecione um arquivo para continuar.");
+      return;
+    }
+
+    if (manualFile.size > MANUAL_UPLOAD_MAX_BYTES) {
+      const message = "O arquivo é muito grande. Envie um documento de até 10 MB.";
+      setLastError(message);
+      toast.error(message);
       return;
     }
 
@@ -501,7 +706,7 @@ export function OnDemandReportCard({
           Cobrança apenas em sucesso final. Se não conseguirmos concluir, nenhum crédito é debitado.
         </div>
 
-        <div className={`grid gap-3 ${editable ? "md:grid-cols-[160px_minmax(0,1fr)_auto]" : "md:grid-cols-[minmax(0,1fr)_auto]"}`}>
+        <div className={`grid gap-3 ${editable ? "md:grid-cols-[160px_minmax(0,1fr)]" : "md:grid-cols-1"}`}>
           {editable ? (
             <Select
               name="assetType"
@@ -516,60 +721,71 @@ export function OnDemandReportCard({
             name="ticker"
             label={editable ? "Ticker" : undefined}
             value={ticker}
-            onChange={(event) => setTicker(event.target.value.toUpperCase())}
+            onChange={(event) => setTicker(normalizeTicker(event.target.value))}
             placeholder={assetType === "FII" ? "Ex.: MXRF11" : "Ex.: PETR4"}
             containerClassName="mb-0"
           />
-
-          <div className="flex items-end">
-            <Button onClick={handleAnalyze} disabled={loading}>
-              {pendingAction === "auto"
-                ? "Iniciando…"
-                : currentJob && !isTerminalJob(currentJob.status)
-                  ? "Nova solicitação"
-                  : analysisResult
-                    ? "Atualizar leitura"
-                    : "Gerar leitura"}
-            </Button>
-          </div>
         </div>
 
-        <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-          <div className="space-y-1">
-            <p className="text-sm font-semibold text-[var(--foreground)]">Enviar relatório do seu computador</p>
-            <p className="text-sm text-slate-500">
-              Se não encontrarmos um material confiável pelo ticker, você pode enviar um arquivo e seguir por esse caminho.
-            </p>
-          </div>
-
-          <div className="mt-4 grid gap-3 md:grid-cols-[minmax(0,1fr)_auto]">
-            <div className="space-y-2">
-              <label htmlFor="manual-report-file" className="text-sm font-medium text-[var(--foreground)]">
-                Arquivo do relatório
-              </label>
-              <input
-                id="manual-report-file"
-                aria-label="Arquivo do relatório"
-                type="file"
-                accept=".pdf,.txt,.md,.csv,.json,.html,.htm,text/plain,application/pdf"
-                onChange={(event) => setManualFile(event.target.files?.[0] ?? null)}
-                className="block w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700"
-              />
-              <p className="text-xs text-slate-500">
-                {manualFile
-                  ? `Arquivo pronto para envio: ${manualFile.name}`
-                  : "Aceitamos arquivos de até 5 MB em PDF, TXT, MD, CSV, JSON ou HTML."}
+        <div className="grid gap-4 md:grid-cols-2">
+          <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+            <div className="space-y-1">
+              <p className="text-sm font-semibold text-[var(--foreground)]">Análise por busca automática</p>
+              <p className="text-sm text-slate-500">
+                Tenta localizar automaticamente uma fonte confiável para o ticker e segue a análise com cobrança apenas em sucesso.
               </p>
             </div>
 
-            <div className="flex items-end">
-              <Button onClick={handleManualUpload} disabled={loading || !manualFile}>
-                {pendingAction === "manual"
-                  ? "Enviando arquivo…"
+            <div className="mt-4 flex items-end">
+              <Button onClick={handleAnalyze} disabled={loading}>
+                {pendingAction === "auto"
+                  ? "Iniciando…"
                   : currentJob && !isTerminalJob(currentJob.status)
-                    ? "Nova solicitação com arquivo"
-                    : "Gerar leitura com arquivo"}
+                    ? "Nova solicitação"
+                    : analysisResult
+                      ? "Atualizar leitura"
+                      : "Gerar leitura"}
               </Button>
+            </div>
+          </div>
+
+          <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+            <div className="space-y-1">
+              <p className="text-sm font-semibold text-[var(--foreground)]">Análise com envio de RI</p>
+              <p className="text-sm text-slate-500">
+                Envie um documento do ativo para gerar a leitura nesse modo. Esse fluxo não se mistura com a busca automática.
+              </p>
+            </div>
+
+            <div className="mt-4 grid gap-3">
+              <div className="space-y-2">
+                <label htmlFor="manual-report-file" className="text-sm font-medium text-[var(--foreground)]">
+                  Arquivo do relatório
+                </label>
+                <input
+                  id="manual-report-file"
+                  aria-label="Arquivo do relatório"
+                  type="file"
+                  accept=".pdf,.txt,.md,.csv,.json,.html,.htm,text/plain,application/pdf"
+                  onChange={(event) => setManualFile(event.target.files?.[0] ?? null)}
+                  className="block w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700"
+                />
+                <p className="text-xs text-slate-500">
+                  {manualFile
+                  ? `Arquivo pronto para envio: ${manualFile.name}`
+                  : "Aceitamos arquivos de até 10 MB em PDF, TXT, MD, CSV, JSON ou HTML."}
+                </p>
+              </div>
+
+              <div className="flex items-end">
+                <Button onClick={handleManualUpload} disabled={loading || !manualFile}>
+                  {pendingAction === "manual"
+                    ? "Enviando arquivo…"
+                    : currentJob && !isTerminalJob(currentJob.status)
+                      ? "Nova solicitação com arquivo"
+                      : "Gerar leitura com arquivo"}
+                </Button>
+              </div>
             </div>
           </div>
         </div>
@@ -643,38 +859,76 @@ export function OnDemandReportCard({
           </div>
         ) : null}
 
-        {jobHistory.length > 0 ? (
+        {scopedJobHistory.length > 0 ? (
           <div className="rounded-2xl border border-slate-200 bg-white p-4">
             <div className="flex items-center justify-between gap-3">
               <div>
-                <p className="text-sm font-semibold text-[var(--foreground)]">Solicitações recentes</p>
-                <p className="text-sm text-slate-500">Acompanhe o andamento e reabra uma análise já concluída.</p>
+                <p className="text-sm font-semibold text-[var(--foreground)]">Solicitações recentes por modalidade</p>
+                <p className="text-sm text-slate-500">
+                  {scopeToInitialAsset
+                    ? "Mostrando apenas as análises do ativo desta tela, separadas por fluxo."
+                    : "Acompanhe o andamento e reabra uma análise já concluída."}
+                </p>
               </div>
               {isLoadingHistory ? <span className="text-xs text-slate-400">Atualizando…</span> : null}
             </div>
 
-            <div className="mt-4 space-y-3">
-              {jobHistory.slice(0, 6).map((job) => (
-                <div key={job.id} className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
-                  <div className="space-y-1">
-                    <p className="text-sm font-semibold text-[var(--foreground)]">
-                      {job.ticker} · {job.assetType === "FII" ? "FII" : "Ação"}
-                    </p>
-                    <p className="text-xs text-slate-500">
-                      {formatRequestMode(job.requestMode)} · {formatDate(job.createdAt)}
-                    </p>
-                  </div>
+            <div className="mt-4 grid gap-4 md:grid-cols-2">
+              <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3">
+                <p className="text-sm font-semibold text-[var(--foreground)]">Busca automática</p>
+                <div className="mt-3 space-y-3">
+                  {autoModeJobs.slice(0, 6).map((job) => (
+                    <div key={job.id} className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-white px-4 py-3">
+                      <div className="space-y-1">
+                        <p className="text-sm font-semibold text-[var(--foreground)]">
+                          {job.ticker} · {job.assetType === "FII" ? "FII" : "Ação"}
+                        </p>
+                        <p className="text-xs text-slate-500">{formatDate(job.createdAt)}</p>
+                      </div>
 
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span className={`inline-flex rounded-full border px-3 py-1 text-xs font-semibold ${statusToneClass(job.status)}`}>
-                      {formatJobStatus(job.status)}
-                    </span>
-                    <Button variant="outline" onClick={() => void inspectJob(job)}>
-                      {job.analysisId && job.status === "COMPLETED" ? "Abrir análise" : "Ver status"}
-                    </Button>
-                  </div>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className={`inline-flex rounded-full border px-3 py-1 text-xs font-semibold ${statusToneClass(job.status)}`}>
+                          {formatJobStatus(job.status)}
+                        </span>
+                        <Button variant="outline" onClick={() => void inspectJob(job)}>
+                          {job.analysisId && job.status === "COMPLETED" ? "Abrir análise" : "Ver status"}
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
+                  {autoModeJobs.length === 0 ? (
+                    <p className="text-xs text-slate-500">Sem solicitações automáticas para este contexto.</p>
+                  ) : null}
                 </div>
-              ))}
+              </div>
+
+              <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3">
+                <p className="text-sm font-semibold text-[var(--foreground)]">Upload manual (RI)</p>
+                <div className="mt-3 space-y-3">
+                  {manualModeJobs.slice(0, 6).map((job) => (
+                    <div key={job.id} className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-white px-4 py-3">
+                      <div className="space-y-1">
+                        <p className="text-sm font-semibold text-[var(--foreground)]">
+                          {job.ticker} · {job.assetType === "FII" ? "FII" : "Ação"}
+                        </p>
+                        <p className="text-xs text-slate-500">{formatDate(job.createdAt)}</p>
+                      </div>
+
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className={`inline-flex rounded-full border px-3 py-1 text-xs font-semibold ${statusToneClass(job.status)}`}>
+                          {formatJobStatus(job.status)}
+                        </span>
+                        <Button variant="outline" onClick={() => void inspectJob(job)}>
+                          {job.analysisId && job.status === "COMPLETED" ? "Abrir análise" : "Ver status"}
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
+                  {manualModeJobs.length === 0 ? (
+                    <p className="text-xs text-slate-500">Sem solicitações por upload manual para este contexto.</p>
+                  ) : null}
+                </div>
+              </div>
             </div>
           </div>
         ) : null}
@@ -713,9 +967,83 @@ export function OnDemandReportCard({
               </Link>
             </div>
 
-            {bullets.length > 0 ? (
+            {valuationInsights.length > 0 ? (
+              <div className="mt-4 grid gap-4 md:grid-cols-2">
+                {valuationInsights.map((insight) => {
+                  const isGraham = insight.method === "GRAHAM";
+                  const accentClass = isGraham
+                    ? "border-emerald-300 bg-emerald-950/[0.06]"
+                    : "border-blue-300 bg-blue-950/[0.05]";
+                  const formulaClass = isGraham
+                    ? "border-emerald-300/60 bg-emerald-900/20 text-emerald-100"
+                    : "border-blue-300/60 bg-blue-900/20 text-blue-100";
+                  const barFill =
+                    insight.currentPrice != null && insight.fairPrice != null && insight.fairPrice > 0
+                      ? Math.min(100, (insight.currentPrice / insight.fairPrice) * 100)
+                      : 0;
+                  const potentialPositive = (insight.potentialPercent ?? 0) >= 0;
+
+                  return (
+                    <article key={`${analysisResult.analysis.id}-${insight.method}`} className={`rounded-2xl border p-4 ${accentClass}`}>
+                      <div className="flex items-center justify-between gap-3">
+                        <h4 className="text-lg font-semibold text-[var(--foreground)]">{insight.title}</h4>
+                        <span className="inline-flex rounded-full border border-white/20 bg-black/20 px-2 py-1 text-xs font-semibold text-white/90">
+                          {insight.badge}
+                        </span>
+                      </div>
+
+                      <div className={`mt-4 rounded-xl border p-3 ${formulaClass}`}>
+                        <p className="text-sm font-semibold">Fórmula: {insight.formula}</p>
+                        <p className="mt-1 text-xs text-white/80">{insight.description}</p>
+                      </div>
+
+                      <div className="mt-4 rounded-xl border border-slate-700/40 bg-slate-950/40 p-3">
+                        <p className="text-sm font-semibold text-white">Resultado {insight.method === "GRAHAM" ? "Graham" : "Bazin"}</p>
+
+                        <div className="mt-3 space-y-2 text-sm">
+                          <div className="flex items-center justify-between gap-3 border-b border-slate-700/40 pb-2">
+                            <span className="text-slate-200">{insight.fairLabel}</span>
+                            <span className="font-semibold text-white">
+                              {insight.fairPrice != null ? formatCurrency(String(insight.fairPrice)) : "—"}
+                            </span>
+                          </div>
+                          <div className="flex items-center justify-between gap-3">
+                            <span className="text-slate-200">Potencial de Valorização</span>
+                            <span className={`font-semibold ${potentialPositive ? "text-emerald-300" : "text-rose-300"}`}>
+                              {insight.potentialPercent != null ? formatPercent(insight.potentialPercent) : "—"}
+                              <span className="ml-2 rounded-md border border-white/20 px-1.5 py-0.5 text-xs text-white/90">
+                                {insight.potentialLabel}
+                              </span>
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="mt-4">
+                        <div className="mb-1 flex items-center justify-between text-xs font-semibold text-slate-200">
+                          <span>Preço Atual</span>
+                          <span>{insight.badge}</span>
+                        </div>
+                        <div className="h-3 w-full overflow-hidden rounded-full bg-slate-700/50">
+                          <div
+                            className={`h-full rounded-full ${potentialPositive ? "bg-emerald-500" : "bg-blue-500"}`}
+                            style={{ width: `${barFill}%` }}
+                          />
+                        </div>
+                        <div className="mt-1 flex items-center justify-between text-xs text-slate-300">
+                          <span>{insight.currentPrice != null ? formatCurrency(String(insight.currentPrice)) : "—"}</span>
+                          <span>{insight.fairPrice != null ? formatCurrency(String(insight.fairPrice)) : "—"}</span>
+                        </div>
+                      </div>
+                    </article>
+                  );
+                })}
+              </div>
+            ) : null}
+
+            {regularBullets.length > 0 ? (
               <ul className="mt-4 flex flex-col gap-3">
-                {bullets.map((bullet, index) => (
+                {regularBullets.map((bullet, index) => (
                   <li key={`${analysisResult.analysis.id}-${index}`} className="flex gap-2 text-sm text-[var(--foreground)]">
                     <span className="mt-0.5 shrink-0 text-[var(--primary)]">•</span>
                     <span>{bullet}</span>
